@@ -1,0 +1,24 @@
+install -d -m 755 /etc/apt/keyrings
+cat > /etc/apt/keyrings/ondrej.asc <<'KEY'
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mI0ESX35nAEEALKDCUDVXvmW9n+T/+3G1DnTpoWh9/1xNaz/RrUH6fQKhHr568F8
+hfnZP/2CGYVYkW9hxP9LVW9IDvzcmnhgIwK+ddeaPZqh3T/FM4OTA7Q78HSvR81m
+Jpf2iMLm/Zvh89ZsmP2sIgZuARiaHo8lxoTSLtmKXsM3FsJVlusyewHfABEBAAG0
+H0xhdW5jaHBhZCBQUEEgZm9yIE9uZMWZZWogU3Vyw72ItgQTAQIAIAUCSX35nAIb
+AwYLCQgHAwIEFQIIAwQWAgMBAh4BAheAAAoJEE9OoKrlJnpsQjYD/jW1NlIFAlT6
+EvF2xfVbkhERii9MapjaUsSso4XLCEmZdEGX54GQ01svXnrivwnd/kmhKvyxCqiN
+LDY/dOaK8MK//bDI6mqdKmG8XbP2vsdsxhifNC+GH/OwaDPvn1TyYB653kwyruCG
+FjEnCreZTcRUu2oBQyolORDl+BmF4DjL
+=R5tk
+-----END PGP PUBLIC KEY BLOCK-----
+KEY
+rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-*.list
+cat > /etc/apt/sources.list.d/ondrej-ubuntu-php-{codename}.sources <<'SOURCES'
+Types: deb
+URIs: https://ppa.launchpadcontent.net/ondrej/php/ubuntu
+Suites: {codename}
+Components: main
+Signed-By: /etc/apt/keyrings/ondrej.asc
+SOURCES
+apt-get update -q

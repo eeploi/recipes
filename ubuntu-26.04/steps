@@ -1,0 +1,17 @@
+# The steps for a new server on Ubuntu 26.04, in order. Those in first-boot/ run only when eeploi creates it.
+stack/start.sh
+first-boot/start.sh
+first-boot/00-lock-root.sh
+stack/values.sh
+first-boot/00-helper-download.sh
+ubuntu-26.04/01-packages.sh
+stack/02-deploy-user.sh
+stack/03-sudo.sh
+stack/04-ssh.sh
+stack/05-firewall.sh
+stack/06-fail2ban.sh
+stack/07-updates.sh
+stack/08-nginx.sh
+stack/09-logs.sh
+stack/10-start.sh
+first-boot/11-report.sh
