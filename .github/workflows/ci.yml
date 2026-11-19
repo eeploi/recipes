@@ -45,7 +45,8 @@ jobs:
         run: shellcheck bin/*.sh
 
       # Each always step in markers runs twice in a fresh Ubuntu 26.04, then its check. The host's
-      # kernel modules are mounted read-only, so modprobe reads a real kernel's.
+      # kernel modules are mounted read-only, so modprobe reads a real kernel's. Then 07's check
+      # must fail without its apt lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
           docker run --rm -v "$PWD:/recipes:ro" -v /lib/modules:/lib/modules:ro -w /recipes \
@@ -53,4 +54,6 @@ jobs:
               apt-get update -q
               DEBIAN_FRONTEND=noninteractive apt-get install -yq fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl
               useradd -m deploy
-              bin/run-twice.sh'
+              bin/run-twice.sh
+              rm /etc/apt/apt.conf.d/20auto-upgrades
+              ! bash <(bin/render.sh --check stack/07-updates.sh)'

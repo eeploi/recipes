@@ -4,9 +4,9 @@
 # line stands for lines eeploi renders itself and is left out here, except {php_source}, which
 # gets php-source.sh.
 # Usage: bin/render.sh [--no-first-boot | --checks | --step FILE | --check FILE]
-#   --checks        the values, then the check of each step, as one script
+#   --checks        the values, then the check of each step, each on its own, as one script
 #   --step FILE     start.sh, the values and that one step, to run on its own (bin/run-twice.sh)
-#   --check FILE    the values and that step's check, stopping at the first line that fails
+#   --check FILE    as --checks, with only that step's check
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,34 +44,39 @@ emit() {
   render "$1"
 }
 
-case "$mode" in
-  --step)
-    for file in stack/start.sh stack/values.sh "$step"; do emit "$file"; done
-    exit "$left"
-    ;;
-  --check)
-    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-    first=0
-    for file in stack/values.sh "${step%.sh}.check.sh"; do emit "$file"; done
-    exit "$left"
-    ;;
-esac
+if [ "$mode" = --step ]; then
+  for file in stack/start.sh stack/values.sh "$step"; do emit "$file"; done
+  exit "$left"
+fi
 
-if [ "$mode" = --checks ]; then
+# The checks get only the values, never the rest of values.sh, so they write nothing. Each check
+# runs in its own subshell under set -e, so any line that fails fails it, and says so on its own.
+checks=0
+case "$mode" in --checks | --check) checks=1 ;; esac
+if [ "$checks" -eq 1 ]; then
   echo '#!/usr/bin/env bash'
-  first=0
-  emit stack/values.sh
+  render stack/values.sh | grep -E '^[A-Z_]+='
+  cat <<'HEAD'
+fail=0
+result() { if [ "$1" -eq 0 ]; then echo "ok $2"; else echo "failed $2"; fail=1; fi; }
+HEAD
 fi
 
 while IFS= read -r file || [ -n "$file" ]; do
   case "$file" in '' | '#'*) continue ;; esac
   if [ "$mode" = --no-first-boot ] && [[ "$file" == first-boot/* ]]; then continue; fi
-  if [ "$mode" = --checks ]; then
+  if [ "$checks" -eq 1 ]; then
+    [ "$mode" = --checks ] || [ "$file" = "$step" ] || continue
     check=${file%.sh}.check.sh
-    if [ -f "$check" ]; then emit "$check"; fi
+    [ -f "$check" ] || continue
+    printf '\n(\nset -euo pipefail\n'
+    render "$check"
+    echo "); result \$? $check"
   else
     emit "$file"
   fi
 done < ubuntu-26.04/steps
 
+# shellcheck disable=SC2016 # the $ is for the checks script
+[ "$checks" -eq 0 ] || echo 'exit "$fail"'
 exit "$left"

@@ -8,7 +8,7 @@ first-boot stack/04-ssh.sh
 first-boot stack/05-firewall.sh
 always     stack/06-fail2ban.sh
 always     stack/07-updates.sh
-always     stack/08-nginx.sh
+window     stack/08-nginx.sh
 always     stack/09-logs.sh
 window     stack/10-start.sh
 first-boot first-boot/11-report.sh

@@ -53,11 +53,11 @@ The markers are not part of a server's script, so a new server gets the same scr
 
 ## Checks
 
-Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check that the step left the server as it should. A check reads the same values (`DEPLOY_USER`, `SSH_PORT`, `PHP`). Checks are not part of the first boot yet.
+Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check that the step left the server as it should. A check reads the same values (`DEPLOY_USER`, `SSH_PORT`, `PHP`), and only those: `bin/render.sh --checks` puts the values in front, not the rest of `values.sh`, so the checks write nothing. Each check runs in its own subshell under `set -e`, so any line that fails fails it, and prints `ok` or `failed` with its file. Checks are not part of the first boot yet.
 
 ## CI
 
-One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. Then `bin/run-twice.sh` runs each `always` step twice in a fresh `ubuntu:26.04` container, then its check, stopping at the check's first line that fails.
+One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. Then `bin/run-twice.sh` runs each `always` step twice in a fresh `ubuntu:26.04` container, then its check, and fails a step whose second run changes `/etc`. Then the check of step 7 must fail without its apt lines.
 
 ## Values
 
