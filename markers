@@ -1,5 +1,7 @@
-# When each step may run, one line per step: the marker, then the file. The markers: README, Markers.
+# When each step may run, one line per step: the marker, the file, then its flags, if any, comma
+# separated. The markers and flags: README, Markers.
 first-boot first-boot/00-lock-root.sh
+first-boot stack/00-values.sh
 always     stack/00-apt-retries.sh
 first-boot first-boot/00-helper-download.sh
 window     ubuntu-26.04/01-packages.sh

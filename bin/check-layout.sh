@@ -38,12 +38,15 @@ for list in ubuntu-*/steps; do
   done < "$list"
 done
 
-# Each line in markers: a known marker and a step that a list of steps runs.
+# Each line in markers: a known marker, a step that a list of steps runs, and known flags.
 # shellcheck disable=SC2094 # bad() only prints
-while read -r marker file rest || [ -n "$marker" ]; do
+while read -r marker file flags rest || [ -n "$marker" ]; do
   case "$marker" in '' | '#'*) continue ;; esac
   case "$marker" in first-boot | always | window) ;; *) bad markers "$marker is no marker (first-boot, always, window)" ;; esac
-  [ -z "$rest" ] || bad markers "$file: more than a marker and a file"
+  [ -z "$rest" ] || bad markers "$file: more than a marker, a file and flags"
+  for flag in ${flags//,/ }; do
+    case "$flag" in security | needs-restart | needs-reboot) ;; *) bad markers "$file: $flag is no flag (security, needs-restart, needs-reboot)" ;; esac
+  done
   grep -qxF "$file" ubuntu-*/steps || bad markers "$file is in no list of steps"
   # A step without a check, or one for a server eeploi creates, never runs on a live server.
   case " $NO_CHECK " in *" $file "*) no_check=1 ;; *) no_check=0 ;; esac
