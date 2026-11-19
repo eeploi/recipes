@@ -8,10 +8,10 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 
 | Folder | Holds |
 |---|---|
-| `stack/` | The steps every Ubuntu release shares: the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start |
+| `stack/` | The steps every Ubuntu release shares: apt retries, the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start |
 | `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the packages (`01-packages.sh`) and the source for another PHP version than Ubuntu's (`php-source.sh`) |
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
-| `bin/` | For CI, not part of a server's script: the layout check and the render of the steps that shellcheck reads |
+| `bin/` | For CI, not part of a server's script: the layout check, the render of the steps that shellcheck reads, and the run of each `always` step twice |
 
 ## Steps
 
@@ -22,13 +22,14 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | Step | File | Does |
 |---|---|---|
 | 0 | `first-boot/00-lock-root.sh` | Locks root's password |
+| 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times |
 | 0 | `first-boot/00-helper-download.sh` | Downloads eeploi-helper and checks its signature and SHA-256 |
 | 1 | `ubuntu-26.04/01-packages.sh` | nginx, PHP, Node, Redis, Supervisor, the database, Composer and a pinned npm |
 | 2 | `stack/02-deploy-user.sh` | The deploy user, with eeploi's key only; cron and at for root and that user only |
 | 3 | `stack/03-sudo.sh` | eeploi-helper and its one sudo rule |
 | 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
-| 6 | `stack/06-fail2ban.sh` | fail2ban for SSH |
+| 6 | `stack/06-fail2ban.sh` | fail2ban for SSH, taken at once by a running fail2ban |
 | 7 | `stack/07-updates.sh` | Security updates only, services restarted after one, SCTP kernel module blocked |
 | 8 | `stack/08-nginx.sh` | Real visitor IPs, a catch-all for unknown hosts |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |
@@ -39,13 +40,25 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 
 `stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the failure report and the values.
 
+## Markers
+
+`markers` gives each step one marker, which says when it may run:
+
+| Marker | Runs |
+|---|---|
+| `first-boot` | Only when a server is installed. Every step in `first-boot/` has it |
+| `always` | On a live server too, in a rollout to every server |
+| `window` | On a live server only with a manual "update now" |
+
+The markers are not part of a server's script, so a new server gets the same script with or without them.
+
 ## Checks
 
-Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check that the step left the server as it should. A check reads the same values (`DEPLOY_USER`, `SSH_PORT`, `PHP`). Checks are not part of the first boot yet.
+Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check that the step left the server as it should. A check reads the same values (`DEPLOY_USER`, `SSH_PORT`, `PHP`) and writes nothing. In `bin/render.sh --checks` each check runs in its own subshell under `set -e`, so any line that fails fails it, and prints `ok` or `failed` with its file. Checks are not part of the first boot yet.
 
 ## CI
 
-One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`.
+One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. Then `bin/run-twice.sh` runs each `always` step twice in a fresh `ubuntu:26.04` container, then its check, and fails a step whose second run changes `/etc`. Then the check of step 7 must fail without its apt lines.
 
 ## Values
 

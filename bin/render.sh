@@ -3,18 +3,26 @@
 # each, with example values. For CI, so shellcheck sees the code as it runs. A {name} alone on a
 # line stands for lines eeploi renders itself and is left out here, except {php_source}, which
 # gets php-source.sh.
-# Usage: bin/render.sh [--no-first-boot | --checks]
-#   --checks  the values, then the check of each step, as one script
+# Usage: bin/render.sh [--no-first-boot | --checks | --step FILE | --check FILE]
+#   --checks        the values, then the check of each step, each on its own, as one script
+#   --step FILE     start.sh, the values and that one step, to run on its own (bin/run-twice.sh)
+#   --check FILE    as --checks, with only that step's check
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 mode=${1:-}
+step=${2:-}
+case "$mode" in --step | --check) [ -f "$step" ] || { echo "$mode needs a step file" >&2; exit 2; } ;; esac
 
 left=0
 
+# A step that runs gets a real line for {real_ip}, since its nginx -t reads it.
+real_ip=':'
+case "$mode" in --step) real_ip='set_real_ip_from 192.0.2.0\/24;' ;; esac
+
 render() {
   local out
-  out=$(sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E \
+  out=$(sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E -e "s/^\\{real_ip\\}$/$real_ip/" \
     -e 's/^\{[a-z_]+\}$/:/' \
     -e 's/\{user\}/deploy/g; s/\{port\}/2222/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g' \
     -e 's/\{name\}/shop.example/g; s/\{report_url\}/https:\/\/eeploi.example\/report/g' \
@@ -36,21 +44,47 @@ emit() {
   render "$1"
 }
 
-if [ "$mode" = --checks ]; then
+if [ "$mode" = --step ]; then
+  for file in stack/start.sh stack/values.sh "$step"; do emit "$file"; done
+  exit "$left"
+fi
+
+# Each check runs in its own subshell under set -e, so any line that fails fails it, and says so
+# on its own, with the command that failed.
+checks=0
+found=0
+case "$mode" in --checks | --check) checks=1 ;; esac
+if [ "$checks" -eq 1 ]; then
   echo '#!/usr/bin/env bash'
-  first=0
-  emit stack/values.sh
+  render stack/values.sh
+  cat <<'HEAD'
+fail=0
+result() { if [ "$1" -eq 0 ]; then echo "ok $2"; else echo "failed $2"; fail=1; fi; }
+HEAD
 fi
 
 while IFS= read -r file || [ -n "$file" ]; do
   case "$file" in '' | '#'*) continue ;; esac
   if [ "$mode" = --no-first-boot ] && [[ "$file" == first-boot/* ]]; then continue; fi
-  if [ "$mode" = --checks ]; then
+  if [ "$checks" -eq 1 ]; then
+    [ "$mode" = --checks ] || [ "$file" = "$step" ] || continue
     check=${file%.sh}.check.sh
-    if [ -f "$check" ]; then emit "$check"; fi
+    [ -f "$check" ] || continue
+    found=1
+    cat <<'OPEN'
+
+(
+set -euo pipefail
+trap 'echo "  $BASH_COMMAND" >&2' ERR
+OPEN
+    render "$check"
+    echo "); result \$? $check"
   else
     emit "$file"
   fi
 done < ubuntu-26.04/steps
 
+[ "$mode" != --check ] || [ "$found" -eq 1 ] || { echo "$step has no check in ubuntu-26.04/steps" >&2; exit 2; }
+# shellcheck disable=SC2016 # the $ is for the checks script
+[ "$checks" -eq 0 ] || echo 'exit "$fail"'
 exit "$left"

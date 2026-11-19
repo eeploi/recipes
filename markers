@@ -1,0 +1,15 @@
+# When each step may run, one line per step: the marker, then the file. The markers: README, Markers.
+first-boot first-boot/00-lock-root.sh
+always     stack/00-apt-retries.sh
+first-boot first-boot/00-helper-download.sh
+window     ubuntu-26.04/01-packages.sh
+first-boot stack/02-deploy-user.sh
+first-boot stack/03-sudo.sh
+first-boot stack/04-ssh.sh
+first-boot stack/05-firewall.sh
+always     stack/06-fail2ban.sh
+always     stack/07-updates.sh
+window     stack/08-nginx.sh
+always     stack/09-logs.sh
+window     stack/10-start.sh
+first-boot first-boot/11-report.sh
