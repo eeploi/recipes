@@ -49,13 +49,13 @@ if [ "$mode" = --step ]; then
   exit "$left"
 fi
 
-# The checks get only the values, never the rest of values.sh, so they write nothing. Each check
-# runs in its own subshell under set -e, so any line that fails fails it, and says so on its own.
+# Each check runs in its own subshell under set -e, so any line that fails fails it, and says so
+# on its own.
 checks=0
 case "$mode" in --checks | --check) checks=1 ;; esac
 if [ "$checks" -eq 1 ]; then
   echo '#!/usr/bin/env bash'
-  render stack/values.sh | grep -E '^[A-Z_]+='
+  render stack/values.sh
   cat <<'HEAD'
 fail=0
 result() { if [ "$1" -eq 0 ]; then echo "ok $2"; else echo "failed $2"; fail=1; fi; }

@@ -7,3 +7,6 @@ port = $SSH_PORT
 maxretry = 5
 bantime = 1h
 JAIL
+# A live server takes the jail now, once fail2ban accepts it; a stopped fail2ban stays stopped.
+fail2ban-client -t >/dev/null
+systemctl try-reload-or-restart fail2ban

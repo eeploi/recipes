@@ -44,16 +44,22 @@ jobs:
       - name: shellcheck, bin/
         run: shellcheck bin/*.sh
 
-      # Each always step in markers runs twice in a fresh Ubuntu 26.04, then its check. The host's
-      # kernel modules are mounted read-only, so modprobe reads a real kernel's. Then 07's check
-      # must fail without its apt lines: every line of a check counts, not only the last.
+      # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
+      # step can reload its service, then its check. The host's kernel modules are mounted
+      # read-only, so modprobe reads a real kernel's. Then 07's check must fail without its apt
+      # lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
-          docker run --rm -v "$PWD:/recipes:ro" -v /lib/modules:/lib/modules:ro -w /recipes \
-            ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db bash -euc '
-              apt-get update -q
-              DEBIAN_FRONTEND=noninteractive apt-get install -yq fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl
-              useradd -m deploy
-              bin/run-twice.sh
-              rm /etc/apt/apt.conf.d/20auto-upgrades
-              ! bash <(bin/render.sh --check stack/07-updates.sh)'
+          docker build -t twice - <<'DOCKERFILE'
+          FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+          RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
+                fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl && useradd -m deploy
+          CMD ["/sbin/init"]
+          DOCKERFILE
+          docker run -d --name twice --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \
+            -v "$PWD:/recipes:ro" -v /lib/modules:/lib/modules:ro -w /recipes twice
+          timeout 120 bash -c 'until docker exec twice systemctl is-system-running 2>/dev/null | grep -qE "^(running|degraded)$"; do sleep 2; done'
+          docker exec twice bash -euc '
+            bin/run-twice.sh
+            rm /etc/apt/apt.conf.d/20auto-upgrades
+            ! bash <(bin/render.sh --check stack/07-updates.sh)'
