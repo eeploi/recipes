@@ -43,3 +43,14 @@ jobs:
 
       - name: shellcheck, bin/
         run: shellcheck bin/*.sh
+
+      # Each always step in markers runs twice in a fresh Ubuntu 26.04, then its check. The host's
+      # kernel modules are mounted read-only, so modprobe reads a real kernel's.
+      - name: always steps, twice, then their checks
+        run: |
+          docker run --rm -v "$PWD:/recipes:ro" -v /lib/modules:/lib/modules:ro -w /recipes \
+            ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db bash -euc '
+              apt-get update -q
+              DEBIAN_FRONTEND=noninteractive apt-get install -yq fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl
+              useradd -m deploy
+              bin/run-twice.sh'

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks the repo layout: every file in ubuntu-*/steps exists, and every step in it
-# sets STEP=, has its .check.sh next to it and is in the README table.
+# sets STEP=, has its .check.sh next to it, has one marker in markers and is in the README table.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
@@ -29,9 +29,23 @@ for list in ubuntu-*/steps; do
       *" $file "*) ;;
       *) [ -f "${file%.sh}.check.sh" ] || bad "$file" "has no ${name%.sh}.check.sh" ;;
     esac
+    case $(awk -v f="$file" '$2 == f' markers | wc -l | tr -d ' ') in
+      0) bad "$file" "has no marker in markers" ;;
+      1) ;;
+      *) bad "$file" "has more than one marker in markers" ;;
+    esac
     grep -qF "\`$file\`" README.md || bad "$file" "is not in the README table"
   done < "$list"
 done
+
+# Each line in markers: a known marker and a step that a list of steps runs.
+# shellcheck disable=SC2094 # bad() only prints
+while read -r marker file rest || [ -n "$marker" ]; do
+  case "$marker" in '' | '#'*) continue ;; esac
+  case "$marker" in first-boot | always | window) ;; *) bad markers "$marker is no marker (first-boot, always, window)" ;; esac
+  [ -z "$rest" ] || bad markers "$file: more than a marker and a file"
+  grep -qxF "$file" ubuntu-*/steps || bad markers "$file is in no list of steps"
+done < markers
 
 [ "$fail" -eq 0 ] && echo "layout ok"
 exit "$fail"

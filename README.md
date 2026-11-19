@@ -11,7 +11,7 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 | `stack/` | The steps every Ubuntu release shares: the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start |
 | `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the packages (`01-packages.sh`) and the source for another PHP version than Ubuntu's (`php-source.sh`) |
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
-| `bin/` | For CI, not part of a server's script: the layout check and the render of the steps that shellcheck reads |
+| `bin/` | For CI, not part of a server's script: the layout check, the render of the steps that shellcheck reads, and the run of each `always` step twice |
 
 ## Steps
 
@@ -37,6 +37,18 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 
 `php-source.sh` adds the ondrej PPA as a fixed source, with its key (14AA40EC0831756756D7F66C4F4EA0AAE5267A6C) pinned, so a first boot needs no Launchpad API.
 
+## Markers
+
+`markers` gives each step one marker, which says when it may run:
+
+| Marker | Runs |
+|---|---|
+| `first-boot` | Only when a server is installed |
+| `always` | On a live server too, in a rollout to every server |
+| `window` | On a live server only with a manual "update now" |
+
+The markers are not part of a server's script, so a new server gets the same script with or without them.
+
 `stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the failure report and the values.
 
 ## Checks
@@ -45,7 +57,7 @@ Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check th
 
 ## CI
 
-One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`.
+One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. Then `bin/run-twice.sh` runs each `always` step twice in a fresh `ubuntu:26.04` container, then its check, stopping at the check's first line that fails.
 
 ## Values
 
