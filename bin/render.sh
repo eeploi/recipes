@@ -10,13 +10,23 @@ cd "$(dirname "$0")/.."
 
 mode=${1:-}
 
+left=0
+
 render() {
-  sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E \
+  local out
+  out=$(sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E \
     -e 's/^\{[a-z_]+\}$/:/' \
     -e 's/\{user\}/deploy/g; s/\{port\}/2222/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g' \
     -e 's/\{name\}/shop.example/g; s/\{report_url\}/https:\/\/eeploi.example\/report/g' \
     -e 's/\{ranges\}/192.0.2.0\/24 198.51.100.0\/24/g; s/\{database\}/mariadb-server/g; s/\{npm\}/11.0.0/g' \
-    -e 's/\{helper_path\}/\/usr\/local\/bin\/eeploi-helper/g; s/\{codename\}/resolute/g'
+    -e 's/\{helper_path\}/\/usr\/local\/bin\/eeploi-helper/g; s/\{codename\}/resolute/g')
+  printf '%s\n' "$out"
+  # A {name} left over is a value this script doesn't know. ${name} and $x{name} are bash.
+  # shellcheck disable=SC2016 # the $ is in a regex
+  while IFS= read -r placeholder; do
+    echo "$1: $placeholder is not replaced" >&2
+    left=1
+  done < <(grep -oE '(^|[^$A-Za-z0-9_])\{[a-z_]+\}' <<< "$out" | grep -oE '\{[a-z_]+\}' || true)
 }
 
 first=1
@@ -42,3 +52,5 @@ while IFS= read -r file || [ -n "$file" ]; do
     emit "$file"
   fi
 done < ubuntu-26.04/steps
+
+exit "$left"
