@@ -5,3 +5,5 @@ command -v needrestart >/dev/null
 grep -rqs "^\$nrconf{restart} = 'a';" /etc/needrestart/conf.d/
 # SCTP can't be loaded.
 modprobe -n -v sctp | grep -q 'install /bin/false'
+# SCTP is not loaded. If it can't be unloaded, a reboot does.
+[ ! -d /sys/module/sctp ]

@@ -14,3 +14,5 @@ printf '$nrconf{restart} = '"'a'"';\n' > /etc/needrestart/conf.d/50-eeploi.conf
 # Nothing eeploi runs uses SCTP. The local- prefix keeps this apart from Ubuntu's own
 # disable-<module>.conf files in kmod.
 printf 'install sctp /bin/false\n' > /etc/modprobe.d/local-disable-sctp.conf
+# A server that already has SCTP loaded drops it now; if it is in use, a reboot does.
+modprobe -r sctp 2>/dev/null || true
