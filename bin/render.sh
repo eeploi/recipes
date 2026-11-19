@@ -10,7 +10,7 @@ no_first_boot=0
 [ "${1:-}" = --no-first-boot ] && no_first_boot=1
 
 first=1
-while IFS= read -r file; do
+while IFS= read -r file || [ -n "$file" ]; do
   case "$file" in '' | '#'*) continue ;; esac
   if [ "$no_first_boot" -eq 1 ] && [[ "$file" == first-boot/* ]]; then continue; fi
   [ "$first" -eq 1 ] || echo

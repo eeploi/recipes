@@ -13,7 +13,7 @@ bad() { echo "$1: $2"; fail=1; }
 
 # shellcheck disable=SC2094 # bad() only prints
 for list in ubuntu-*/steps; do
-  while IFS= read -r file; do
+  while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
 
     if [ ! -f "$file" ]; then
