@@ -10,6 +10,7 @@ APT::Periodic::Unattended-Upgrade "1";
 # needrestart restarts the services a security update patched on its own: a reload would leave an
 # old nginx binary running.
 mkdir -p /etc/needrestart/conf.d
+# shellcheck disable=SC2016 # the $ is meant literally
 printf '$nrconf{restart} = '"'a'"';\n' > /etc/needrestart/conf.d/50-eeploi.conf
 # Nothing eeploi runs uses SCTP. The local- prefix keeps this apart from Ubuntu's own
 # disable-<module>.conf files in kmod.

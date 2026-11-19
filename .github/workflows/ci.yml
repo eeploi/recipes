@@ -23,18 +23,23 @@ jobs:
         run: bin/check-layout.sh
 
       # The step files are fragments, so shellcheck runs on the script they make, as eeploi renders
-      # it. SC1091: /etc/os-release is not there to follow. SC2016: the $ in the needrestart line
-      # is meant literally.
+      # it. SC1091: /etc/os-release is not there to follow.
       - name: shellcheck, the script for a new server
         run: |
           bin/render.sh > "$RUNNER_TEMP/first-boot.sh"
-          shellcheck -e SC1091,SC2016 "$RUNNER_TEMP/first-boot.sh"
+          shellcheck -e SC1091 "$RUNNER_TEMP/first-boot.sh"
 
       # Without first-boot/ nothing reads STEP, hence SC2034.
       - name: shellcheck, the script printed to run by hand
         run: |
           bin/render.sh --no-first-boot > "$RUNNER_TEMP/by-hand.sh"
-          shellcheck -e SC1091,SC2016,SC2034 "$RUNNER_TEMP/by-hand.sh"
+          shellcheck -e SC1091,SC2034 "$RUNNER_TEMP/by-hand.sh"
+
+      # The checks read the values, so they run as one script with them.
+      - name: shellcheck, the checks
+        run: |
+          bin/render.sh --checks > "$RUNNER_TEMP/checks.sh"
+          shellcheck -e SC1091 "$RUNNER_TEMP/checks.sh"
 
       - name: shellcheck, bin/
         run: shellcheck bin/*.sh

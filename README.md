@@ -45,7 +45,7 @@ Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check th
 
 ## CI
 
-One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`.
+One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`.
 
 ## Values
 
