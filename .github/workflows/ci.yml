@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # the release tags, for bin/release.sh
 
       - name: bash -n on every .sh
         run: git ls-files '*.sh' | xargs -n1 bash -n
@@ -41,8 +42,22 @@ jobs:
           bin/render.sh --checks > "$RUNNER_TEMP/checks.sh"
           shellcheck -e SC1091 "$RUNNER_TEMP/checks.sh"
 
-      - name: shellcheck, bin/
-        run: shellcheck bin/*.sh
+      - name: shellcheck, bin/ and the fingerprint
+        run: shellcheck bin/*.sh stack/fingerprint.sh
+
+      # A release from a tag made here only: every file in the package matches its manifest, the
+      # package holds nothing else, and the steps are those of the list, in its order.
+      - name: release, from a local tag
+        run: |
+          git tag v99.0.0
+          bin/release.sh 99.0.0 0.1.0 example
+          manifest=dist/99.0.0/recipes-99.0.0-example-ubuntu-26.04.manifest
+          mkdir "$RUNNER_TEMP/package"
+          tar -xzf dist/99.0.0/recipes-99.0.0.tar.gz -C "$RUNNER_TEMP/package"
+          awk '$1 == "step" || $1 == "file" { print $2 "  " $NF }' "$manifest" > "$RUNNER_TEMP/sums"
+          (cd "$RUNNER_TEMP/package" && sha256sum -c --quiet "$RUNNER_TEMP/sums")
+          diff <(tar -tzf dist/99.0.0/recipes-99.0.0.tar.gz | grep -v '/$' | LC_ALL=C sort) <(awk '{ print $2 }' "$RUNNER_TEMP/sums" | LC_ALL=C sort)
+          diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
 
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
       # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted
@@ -64,3 +79,38 @@ jobs:
             bin/run-twice.sh
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash <(bin/render.sh --check stack/07-updates.sh)'
+
+      # Step 0 runs only at a first boot, so it is named here. Then its check passes with a comment
+      # added, and fails on a key more, a key less, a key twice, another port, root as the user, and
+      # another mode of the file or its directory.
+      - name: values file, twice, then its check
+        run: |
+          docker exec twice bash -euc '
+            bin/run-twice.sh stack/00-values.sh
+            bin/render.sh --step stack/00-values.sh > /tmp/step
+            bin/render.sh --check stack/00-values.sh > /tmp/check
+            echo "# a comment" >> /etc/eeploi/recipes.conf; bash /tmp/check
+            fails() { if bash /tmp/check > /dev/null 2>&1; then echo "check passed with $1"; exit 1; fi; bash /tmp/step; }
+            echo FOO=1 >> /etc/eeploi/recipes.conf; fails "a key more"
+            sed -i "/^PHP=/d" /etc/eeploi/recipes.conf; fails "a key less"
+            echo PHP=8.4 >> /etc/eeploi/recipes.conf; fails "a key twice"
+            sed -i "s/^SSH_PORT=.*/SSH_PORT=10023/" /etc/eeploi/recipes.conf; fails "another port"
+            sed -i "s/^DEPLOY_USER=.*/DEPLOY_USER=root/" /etc/eeploi/recipes.conf; fails "root as the user"
+            chmod 775 /etc/eeploi; fails "a directory others may change"
+            chmod 600 /etc/eeploi/recipes.conf; fails "another mode"
+            bash /tmp/check'
+
+      # The fingerprint prints only known facts, in the container and on the runner, a real VM,
+      # and leaves /etc as it was.
+      - name: fingerprint
+        run: |
+          known='^(fingerprint 1|kernel [^ ]+|swap [0-9]+|cloud-init-datasource [^ ]+|default-user [^ ]+|apt-mirror [^ ]+|agent [^ ]+)$'
+          docker exec twice bin/etc-state.sh > "$RUNNER_TEMP/etc.before"
+          docker exec twice bash stack/fingerprint.sh > "$RUNNER_TEMP/fingerprint.container"
+          sudo bash stack/fingerprint.sh > "$RUNNER_TEMP/fingerprint.runner"
+          for out in "$RUNNER_TEMP"/fingerprint.*; do
+            cat "$out"; echo
+            [ "$(head -n 1 "$out")" = 'fingerprint 1' ]
+            if grep -vE "$known" "$out"; then echo "unknown facts above in $out"; exit 1; fi
+          done
+          docker exec twice bin/etc-state.sh | diff "$RUNNER_TEMP/etc.before" -
