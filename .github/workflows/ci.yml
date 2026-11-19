@@ -45,7 +45,7 @@ jobs:
         run: shellcheck bin/*.sh
 
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
-      # step can reload its service, then its check. The host's kernel modules are mounted
+      # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted
       # read-only, so modprobe reads a real kernel's. Then 07's check must fail without its apt
       # lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
@@ -60,6 +60,7 @@ jobs:
             -v "$PWD:/recipes:ro" -v /lib/modules:/lib/modules:ro -w /recipes twice
           timeout 120 bash -c 'until docker exec twice systemctl is-system-running 2>/dev/null | grep -qE "^(running|degraded)$"; do sleep 2; done'
           docker exec twice bash -euc '
+            systemctl is-active fail2ban nginx
             bin/run-twice.sh
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash <(bin/render.sh --check stack/07-updates.sh)'
