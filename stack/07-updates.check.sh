@@ -4,6 +4,6 @@ apt-config dump | grep '^APT::Periodic::Unattended-Upgrade "1";' >/dev/null # no
 command -v needrestart >/dev/null
 grep -rqs "^\$nrconf{restart} = 'a';" /etc/needrestart/conf.d/
 # SCTP can't be loaded.
-modprobe -n -v sctp | grep -q 'install /bin/false'
+modprobe -n -v sctp | grep 'install /bin/false' >/dev/null
 # SCTP is not loaded. If it can't be unloaded, a reboot does.
 [ ! -d /sys/module/sctp ]

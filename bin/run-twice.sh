@@ -7,7 +7,11 @@ cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-etc() { find /etc -xdev -type f -exec sha256sum {} + | LC_ALL=C sort -k2; }
+# Every path in /etc with its type, mode, owner and link target, and every file's content.
+etc() {
+  find /etc -xdev -printf '%p %y %m %u:%g %l\n' | LC_ALL=C sort
+  find /etc -xdev -type f -exec sha256sum {} + | LC_ALL=C sort -k2
+}
 
 fail=0
 while read -r marker file || [ -n "$marker" ]; do

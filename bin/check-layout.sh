@@ -29,7 +29,7 @@ for list in ubuntu-*/steps; do
       *" $file "*) ;;
       *) [ -f "${file%.sh}.check.sh" ] || bad "$file" "has no ${name%.sh}.check.sh" ;;
     esac
-    case $(awk -v f="$file" '$2 == f' markers | wc -l | tr -d ' ') in
+    case $(awk -v f="$file" '$1 !~ /^#/ && $2 == f' markers | wc -l | tr -d ' ') in
       0) bad "$file" "has no marker in markers" ;;
       1) ;;
       *) bad "$file" "has more than one marker in markers" ;;

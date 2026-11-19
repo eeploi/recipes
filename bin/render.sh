@@ -52,6 +52,7 @@ fi
 # Each check runs in its own subshell under set -e, so any line that fails fails it, and says so
 # on its own, with the command that failed.
 checks=0
+found=0
 case "$mode" in --checks | --check) checks=1 ;; esac
 if [ "$checks" -eq 1 ]; then
   echo '#!/usr/bin/env bash'
@@ -69,6 +70,7 @@ while IFS= read -r file || [ -n "$file" ]; do
     [ "$mode" = --checks ] || [ "$file" = "$step" ] || continue
     check=${file%.sh}.check.sh
     [ -f "$check" ] || continue
+    found=1
     cat <<'OPEN'
 
 (
@@ -82,6 +84,7 @@ OPEN
   fi
 done < ubuntu-26.04/steps
 
+[ "$mode" != --check ] || [ "$found" -eq 1 ] || { echo "$step has no check in ubuntu-26.04/steps" >&2; exit 2; }
 # shellcheck disable=SC2016 # the $ is for the checks script
 [ "$checks" -eq 0 ] || echo 'exit "$fail"'
 exit "$left"
