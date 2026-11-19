@@ -29,7 +29,7 @@ git archive "$tag" | tar -x -C "$tmp"
 # The release tags up to this one, in version order.
 tags=()
 while IFS= read -r t; do
-  [[ "$t" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+  [[ "$t" =~ ^v${semver#^} ]] || continue
   tags+=("$t")
   [ "$t" != "$tag" ] || break
 done < <(git tag -l 'v*' --sort=v:refname)
@@ -69,8 +69,10 @@ for list in "$tmp"/ubuntu-*/steps; do
       *) files+=("$file") ;;
     esac
   done < "$list" > "$body"
-  for file in "${files[@]}" "${checks[@]}" "$os/php-source.sh" stack/fingerprint.sh; do
+  for file in "$os/php-source.sh" stack/fingerprint.sh; do
     [ -f "$tmp/$file" ] || { echo "$file is not in $tag" >&2; exit 1; }
+  done
+  for file in "${files[@]}" "${checks[@]}" "$os/php-source.sh" stack/fingerprint.sh; do
     echo "file $(sha "$file") $file"
     paths+=("$file")
   done >> "$body"

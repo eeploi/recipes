@@ -54,7 +54,7 @@ jobs:
           manifest=dist/99.0.0/recipes-99.0.0-example-ubuntu-26.04.manifest
           mkdir "$RUNNER_TEMP/package"
           tar -xzf dist/99.0.0/recipes-99.0.0.tar.gz -C "$RUNNER_TEMP/package"
-          awk '$1 == "step" { print $2 "  " $NF } $1 == "file" { print $2 "  " $3 }' "$manifest" > "$RUNNER_TEMP/sums"
+          awk '$1 == "step" || $1 == "file" { print $2 "  " $NF }' "$manifest" > "$RUNNER_TEMP/sums"
           (cd "$RUNNER_TEMP/package" && sha256sum -c --quiet "$RUNNER_TEMP/sums")
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
 
@@ -79,17 +79,14 @@ jobs:
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash <(bin/render.sh --check stack/07-updates.sh)'
 
-      # Step 0 runs only at a first boot, so it runs twice here, not in bin/run-twice.sh. Its check
-      # passes with a comment added, and fails on a key more, a key less, a key twice, another
-      # port and another mode.
+      # Step 0 runs only at a first boot, so it is named here. Then its check passes with a comment
+      # added, and fails on a key more, a key less, a key twice, another port and another mode.
       - name: values file, twice, then its check
         run: |
           docker exec twice bash -euc '
+            bin/run-twice.sh stack/00-values.sh
             bin/render.sh --step stack/00-values.sh > /tmp/step
             bin/render.sh --check stack/00-values.sh > /tmp/check
-            bash /tmp/step; cp /etc/eeploi/recipes.conf /tmp/first; bash /tmp/step
-            cmp /tmp/first /etc/eeploi/recipes.conf
-            bash /tmp/check
             echo "# a comment" >> /etc/eeploi/recipes.conf; bash /tmp/check
             fails() { if bash /tmp/check > /dev/null 2>&1; then echo "check passed with $1"; exit 1; fi; bash /tmp/step; }
             echo FOO=1 >> /etc/eeploi/recipes.conf; fails "a key more"
@@ -104,8 +101,7 @@ jobs:
       - name: fingerprint
         run: |
           known='^(fingerprint 1|kernel [^ ]+|swap [0-9]+|cloud-init-datasource [^ ]+|default-user [^ ]+|apt-mirror [^ ]+|agent [^ ]+)$'
-          docker exec twice touch /tmp/before
-          sleep 1
+          docker exec twice bin/etc-state.sh > "$RUNNER_TEMP/etc.before"
           docker exec twice bash stack/fingerprint.sh > "$RUNNER_TEMP/fingerprint.container"
           sudo bash stack/fingerprint.sh > "$RUNNER_TEMP/fingerprint.runner"
           for out in "$RUNNER_TEMP"/fingerprint.*; do
@@ -113,4 +109,4 @@ jobs:
             [ "$(head -n 1 "$out")" = 'fingerprint 1' ]
             if grep -vE "$known" "$out"; then echo "unknown facts above in $out"; exit 1; fi
           done
-          [ -z "$(docker exec twice find /etc -newer /tmp/before)" ]
+          docker exec twice bin/etc-state.sh | diff "$RUNNER_TEMP/etc.before" -
