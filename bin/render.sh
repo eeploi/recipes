@@ -6,13 +6,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-skip=''
-[ "${1:-}" = --no-first-boot ] && skip='^first-boot/'
+no_first_boot=0
+[ "${1:-}" = --no-first-boot ] && no_first_boot=1
 
 first=1
 while IFS= read -r file; do
   case "$file" in '' | '#'*) continue ;; esac
-  if [ -n "$skip" ] && [[ "$file" =~ $skip ]]; then continue; fi
+  if [ "$no_first_boot" -eq 1 ] && [[ "$file" == first-boot/* ]]; then continue; fi
   [ "$first" -eq 1 ] || echo
   first=0
   sed -E \
