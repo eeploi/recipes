@@ -11,6 +11,7 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 | `stack/` | The steps every Ubuntu release shares: the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start |
 | `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the packages (`01-packages.sh`) and the source for another PHP version than Ubuntu's (`php-source.sh`) |
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
+| `bin/` | For CI, not part of a server's script: the layout check and the render of the steps that shellcheck reads |
 
 ## Steps
 
@@ -41,6 +42,10 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 ## Checks
 
 Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check that the step left the server as it should. A check reads the same values (`DEPLOY_USER`, `SSH_PORT`, `PHP`). Checks are not part of the first boot yet.
+
+## CI
+
+One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`.
 
 ## Values
 
