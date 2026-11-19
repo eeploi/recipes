@@ -24,7 +24,7 @@ render() {
   local out
   out=$(sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E -e "s/^\\{real_ip\\}$/$real_ip/" \
     -e 's/^\{[a-z_]+\}$/:/' \
-    -e 's/\{user\}/deploy/g; s/\{port\}/2222/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g' \
+    -e 's/\{user\}/deploy/g; s/\{port\}/10022/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g' \
     -e 's/\{name\}/shop.example/g; s/\{report_url\}/https:\/\/eeploi.example\/report/g' \
     -e 's/\{ranges\}/192.0.2.0\/24 198.51.100.0\/24/g; s/\{database\}/mariadb-server/g; s/\{npm\}/11.0.0/g' \
     -e 's/\{helper_path\}/\/usr\/local\/bin\/eeploi-helper/g; s/\{codename\}/resolute/g')

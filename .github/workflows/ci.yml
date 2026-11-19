@@ -94,7 +94,7 @@ jobs:
             echo FOO=1 >> /etc/eeploi/recipes.conf; fails "a key more"
             sed -i "/^PHP=/d" /etc/eeploi/recipes.conf; fails "a key less"
             echo PHP=8.4 >> /etc/eeploi/recipes.conf; fails "a key twice"
-            sed -i "s/^SSH_PORT=.*/SSH_PORT=10022/" /etc/eeploi/recipes.conf; fails "another port"
+            sed -i "s/^SSH_PORT=.*/SSH_PORT=10023/" /etc/eeploi/recipes.conf; fails "another port"
             sed -i "s/^DEPLOY_USER=.*/DEPLOY_USER=root/" /etc/eeploi/recipes.conf; fails "root as the user"
             chmod 775 /etc/eeploi; fails "a directory others may change"
             chmod 600 /etc/eeploi/recipes.conf; fails "another mode"

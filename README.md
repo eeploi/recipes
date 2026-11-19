@@ -74,7 +74,7 @@ Step 0 writes the values a later run of the steps needs to `/etc/eeploi/recipes.
 
 ```
 DEPLOY_USER=deploy
-SSH_PORT=2222
+SSH_PORT=10022
 PHP=8.4
 ```
 
