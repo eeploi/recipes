@@ -50,7 +50,7 @@ if [ "$mode" = --step ]; then
 fi
 
 # Each check runs in its own subshell under set -e, so any line that fails fails it, and says so
-# on its own.
+# on its own, with the command that failed.
 checks=0
 case "$mode" in --checks | --check) checks=1 ;; esac
 if [ "$checks" -eq 1 ]; then
@@ -69,7 +69,12 @@ while IFS= read -r file || [ -n "$file" ]; do
     [ "$mode" = --checks ] || [ "$file" = "$step" ] || continue
     check=${file%.sh}.check.sh
     [ -f "$check" ] || continue
-    printf '\n(\nset -euo pipefail\n'
+    cat <<'OPEN'
+
+(
+set -euo pipefail
+trap 'echo "  $BASH_COMMAND" >&2' ERR
+OPEN
     render "$check"
     echo "); result \$? $check"
   else
