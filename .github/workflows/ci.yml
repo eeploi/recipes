@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: bash -n on every .sh
+        run: git ls-files '*.sh' | xargs -n1 bash -n
+
+      - name: Layout
+        run: bin/check-layout.sh
+
+      # The step files are fragments, so shellcheck runs on the script they make, as eeploi renders
+      # it. SC1091: /etc/os-release is not there to follow. SC2016: the $ in the needrestart line
+      # is meant literally.
+      - name: shellcheck, the script for a new server
+        run: |
+          bin/render.sh > "$RUNNER_TEMP/first-boot.sh"
+          shellcheck -e SC1091,SC2016 "$RUNNER_TEMP/first-boot.sh"
+
+      # Without first-boot/ nothing reads STEP, hence SC2034.
+      - name: shellcheck, the script printed to run by hand
+        run: |
+          bin/render.sh --no-first-boot > "$RUNNER_TEMP/by-hand.sh"
+          shellcheck -e SC1091,SC2016,SC2034 "$RUNNER_TEMP/by-hand.sh"
+
+      - name: shellcheck, bin/
+        run: shellcheck bin/*.sh
