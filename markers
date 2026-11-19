@@ -1,7 +1,4 @@
-# When each step may run, one line per step: the marker, then the file.
-#   first-boot  only when a server is installed
-#   always      safe on a live server, also in a rollout to every server
-#   window      on a live server only with a manual "update now"
+# When each step may run, one line per step: the marker, then the file. The markers: README, Markers.
 first-boot first-boot/00-lock-root.sh
 first-boot first-boot/00-helper-download.sh
 window     ubuntu-26.04/01-packages.sh
