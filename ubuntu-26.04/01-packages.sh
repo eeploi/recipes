@@ -2,7 +2,7 @@
 #    PHP version than Ubuntu's adds a PPA, as a fixed source with a pinned key.
 STEP='1. Packages'
 apt-get update -q
-apt-get install -yq curl gnupg ca-certificates unzip git ufw fail2ban unattended-upgrades acl minisign
+apt-get install -yq curl gnupg ca-certificates unzip git ufw fail2ban unattended-upgrades needrestart acl minisign
 {php_source}
 apt-get install -yq nginx redis-server supervisor nodejs npm {database} \
   php$PHP-fpm php$PHP-cli php$PHP-common php$PHP-curl php$PHP-mbstring php$PHP-xml php$PHP-zip \

@@ -28,7 +28,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
 | 6 | `stack/06-fail2ban.sh` | fail2ban for SSH |
-| 7 | `stack/07-updates.sh` | Security updates only |
+| 7 | `stack/07-updates.sh` | Security updates only, services restarted after one, SCTP kernel module blocked |
 | 8 | `stack/08-nginx.sh` | Real visitor IPs, a catch-all for unknown hosts |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |
 | 10 | `stack/10-start.sh` | Starts the services, checks SSH listens on IPv4 |
