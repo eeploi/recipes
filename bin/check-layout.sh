@@ -44,7 +44,8 @@ while read -r marker file flags rest || [ -n "$marker" ]; do
   case "$marker" in '' | '#'*) continue ;; esac
   case "$marker" in first-boot | always | window) ;; *) bad markers "$marker is no marker (first-boot, always, window)" ;; esac
   [ -z "$rest" ] || bad markers "$file: more than a marker, a file and flags"
-  for flag in ${flags//,/ }; do
+  IFS=, read -ra flag_list <<< "$flags"
+  for flag in ${flag_list[@]+"${flag_list[@]}"}; do
     case "$flag" in security | needs-restart | needs-reboot) ;; *) bad markers "$file: $flag is no flag (security, needs-restart, needs-reboot)" ;; esac
   done
   grep -qxF "$file" ubuntu-*/steps || bad markers "$file is in no list of steps"

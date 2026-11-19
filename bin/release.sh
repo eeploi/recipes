@@ -21,10 +21,13 @@ git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag is no tag"
 out=dist/$version
 [ ! -e "$out" ] || { echo "$out exists" >&2; exit 1; }
 
+# Built in $tmp/out and moved to $out at the end, so a run that fails leaves nothing half built.
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-git archive "$tag" | tar -x -C "$tmp"
-"$tmp/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
+build=$tmp/out
+mkdir "$build" "$tmp/tree"
+git archive "$tag" | tar -x -C "$tmp/tree"
+"$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
 
 # The release tags up to this one, in version order.
 tags=()
@@ -46,11 +49,10 @@ versions() {
   echo "$introduced $changed"
 }
 
-sha() { sha256sum "$tmp/$1" | cut -d' ' -f1; }
+sha() { sha256sum "$tmp/tree/$1" | cut -d' ' -f1; }
 
-mkdir -p "$out"
 paths=()
-for list in "$tmp"/ubuntu-*/steps; do
+for list in "$tmp"/tree/ubuntu-*/steps; do
   os=$(basename "$(dirname "$list")")
   # The steps in run order, then every other file a run reads.
   body=$tmp/$os.body
@@ -61,16 +63,17 @@ for list in "$tmp"/ubuntu-*/steps; do
     name=${file##*/}
     case "$name" in
       [0-9][0-9]-*.sh)
-        read -r marker flags < <(awk -v f="$file" '$1 !~ /^#/ && $2 == f { print $1, ($3 == "" ? "-" : $3) }' "$tmp/markers")
+        read -r marker flags < <(awk -v f="$file" '$1 !~ /^#/ && $2 == f { print $1, ($3 == "" ? "-" : $3) }' "$tmp/tree/markers") ||
+          { echo "$file has no marker in markers" >&2; exit 1; }
         echo "step $(sha "$file") $marker $(versions "$file") $flags $file"
-        [ ! -f "$tmp/${file%.sh}.check.sh" ] || checks+=("${file%.sh}.check.sh")
+        [ ! -f "$tmp/tree/${file%.sh}.check.sh" ] || checks+=("${file%.sh}.check.sh")
         paths+=("$file")
         ;;
       *) files+=("$file") ;;
     esac
   done < "$list" > "$body"
   for file in "$os/php-source.sh" stack/fingerprint.sh; do
-    [ -f "$tmp/$file" ] || { echo "$file is not in $tag" >&2; exit 1; }
+    [ -f "$tmp/tree/$file" ] || { echo "$file is not in $tag" >&2; exit 1; }
   done
   for file in "${files[@]}" "${checks[@]}" "$os/php-source.sh" stack/fingerprint.sh; do
     echo "file $(sha "$file") $file"
@@ -84,14 +87,16 @@ for list in "$tmp"/ubuntu-*/steps; do
       echo "target $provider $os"
       echo "min-helper $min_helper"
       cat "$body"
-    } > "$out/recipes-$version-$provider-$os.manifest"
+    } > "$build/recipes-$version-$provider-$os.manifest"
   done
 done
 
 # One package for every manifest: each file once, in a fixed order, so the same tag builds the same bytes.
 # shellcheck disable=SC2046 # no path has a space: markers could not hold it
-git archive --format=tar.gz -o "$out/recipes-$version.tar.gz" "$tag" $(printf '%s\n' "${paths[@]}" | LC_ALL=C sort -u)
+git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" $(printf '%s\n' "${paths[@]}" | LC_ALL=C sort -u)
 
+mkdir -p dist
+mv "$build" "$out"
 echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
 ls -1 "$out"
 echo

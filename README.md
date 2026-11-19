@@ -78,7 +78,7 @@ SSH_PORT=2222
 PHP=8.4
 ```
 
-Its check: the user and the port are the ones the server runs with; `PHP` only has to be a version, since the default PHP may change later.
+Its check: `/etc/eeploi` is root's and 0755; the user (not root) and the port (22 or 10000 to 32767) are the ones the server runs with; `PHP` only has to be a version, since the default PHP may change later.
 
 ## Releases
 
