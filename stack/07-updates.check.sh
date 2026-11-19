@@ -1,5 +1,5 @@
 # apt runs the security updates.
-apt-config dump | grep -q '^APT::Periodic::Unattended-Upgrade "1";'
+apt-config dump | grep '^APT::Periodic::Unattended-Upgrade "1";' >/dev/null # not -q: under pipefail, grep stopping early fails apt-config
 # needrestart is installed and restarts services on its own.
 command -v needrestart >/dev/null
 grep -rqs "^\$nrconf{restart} = 'a';" /etc/needrestart/conf.d/
