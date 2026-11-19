@@ -45,6 +45,11 @@ while read -r marker file rest || [ -n "$marker" ]; do
   case "$marker" in first-boot | always | window) ;; *) bad markers "$marker is no marker (first-boot, always, window)" ;; esac
   [ -z "$rest" ] || bad markers "$file: more than a marker and a file"
   grep -qxF "$file" ubuntu-*/steps || bad markers "$file is in no list of steps"
+  # A step without a check, or one for a server eeploi creates, never runs on a live server.
+  case " $NO_CHECK " in *" $file "*) no_check=1 ;; *) no_check=0 ;; esac
+  if [ "$marker" != first-boot ] && { [[ "$file" == first-boot/* ]] || [ "$no_check" -eq 1 ]; }; then
+    bad markers "$file can only be first-boot"
+  fi
 done < markers
 
 [ "$fail" -eq 0 ] && echo "layout ok"

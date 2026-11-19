@@ -37,19 +37,19 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 
 `php-source.sh` adds the ondrej PPA as a fixed source, with its key (14AA40EC0831756756D7F66C4F4EA0AAE5267A6C) pinned, so a first boot needs no Launchpad API.
 
+`stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the failure report and the values.
+
 ## Markers
 
 `markers` gives each step one marker, which says when it may run:
 
 | Marker | Runs |
 |---|---|
-| `first-boot` | Only when a server is installed |
+| `first-boot` | Only when a server is installed. Every step in `first-boot/` has it |
 | `always` | On a live server too, in a rollout to every server |
 | `window` | On a live server only with a manual "update now" |
 
 The markers are not part of a server's script, so a new server gets the same script with or without them.
-
-`stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the failure report and the values.
 
 ## Checks
 

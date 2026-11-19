@@ -12,6 +12,7 @@ cd "$(dirname "$0")/.."
 
 mode=${1:-}
 step=${2:-}
+case "$mode" in --step | --check) [ -f "$step" ] || { echo "$mode needs a step file" >&2; exit 2; } ;; esac
 
 left=0
 

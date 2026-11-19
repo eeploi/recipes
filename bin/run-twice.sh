@@ -1,26 +1,39 @@
 #!/usr/bin/env bash
 # Runs each always step from markers twice, then its check, as root in a throwaway container: a
-# step that is safe on a live server leaves the same server on a second run. For CI only.
+# step that is safe on a live server leaves /etc the same on a second run. For CI only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-script=$(mktemp)
-check=$(mktemp)
-trap 'rm -f "$script" "$check"' EXIT
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+etc() { find /etc -xdev -type f -exec sha256sum {} + | LC_ALL=C sort -k2; }
 
 fail=0
 while read -r marker file || [ -n "$marker" ]; do
   [ "$marker" = always ] || continue
-  bin/render.sh --step "$file" > "$script"
-  bin/render.sh --check "$file" > "$check"
+  if ! bin/render.sh --step "$file" > "$tmp/step" || ! bin/render.sh --check "$file" > "$tmp/check"; then
+    echo "$file: does not render"
+    fail=1
+    continue
+  fi
   for run in 1 2; do
-    if ! bash "$script" < /dev/null; then
+    if ! bash "$tmp/step" < /dev/null; then
       echo "$file: run $run failed"
       fail=1
       continue 2
     fi
+    etc > "$tmp/etc.$run"
   done
-  if bash "$check" < /dev/null; then echo "$file: twice, check ok"; else echo "$file: check failed after two runs"; fail=1; fi
+  if ! diff "$tmp/etc.1" "$tmp/etc.2"; then
+    echo "$file: the second run changed /etc"
+    fail=1
+  elif bash "$tmp/check" < /dev/null; then
+    echo "$file: twice, check ok"
+  else
+    echo "$file: check failed after two runs"
+    fail=1
+  fi
 done < markers
 
 exit "$fail"
