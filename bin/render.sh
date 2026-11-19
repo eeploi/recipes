@@ -37,7 +37,7 @@ while IFS= read -r file || [ -n "$file" ]; do
   if [ "$mode" = --no-first-boot ] && [[ "$file" == first-boot/* ]]; then continue; fi
   if [ "$mode" = --checks ]; then
     check=${file%.sh}.check.sh
-    [ -f "$check" ] && emit "$check"
+    if [ -f "$check" ]; then emit "$check"; fi
   else
     emit "$file"
   fi
