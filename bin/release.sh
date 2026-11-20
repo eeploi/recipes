@@ -15,6 +15,8 @@ semver='^[0-9]+\.[0-9]+\.[0-9]+$'
 [[ "$version" =~ $semver ]] || { echo "$version is no version, such as 0.4.0" >&2; exit 2; }
 [[ "$min_helper" =~ $semver ]] || { echo "$min_helper is no helper version, such as 0.5.0" >&2; exit 2; }
 provider_name='^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$'   # the helper's rule (recipe-run)
+part='[A-Za-z0-9_][A-Za-z0-9._-]*'
+path_name="^$part(/$part)*\$"   # the helper's rule for a path in a manifest (recipe-run)
 for provider; do
   [[ "$provider" =~ $provider_name ]] || { echo "$provider is no provider name: a-z, 0-9 and inner -, at most 32" >&2; exit 2; }
 done
@@ -29,6 +31,12 @@ trap 'rm -rf "$tmp"' EXIT
 build=$tmp/out
 mkdir "$build" "$tmp/tree"
 git archive "$tag" | tar -x -C "$tmp/tree"
+# The manifest takes its file names and values from these. bash drops a NUL when it reads a line,
+# here and in the helper, so a NUL in them would change a name or value unseen.
+for file in "$tmp"/tree/ubuntu-*/steps "$tmp/tree/markers"; do
+  # shellcheck disable=SC2094 # both only read it
+  tr -d '\000' < "$file" | cmp -s - "$file" || { echo "${file#"$tmp/tree/"} in $tag holds a NUL" >&2; exit 1; }
+done
 "$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
 
 # The release tags up to this one, in version order.
@@ -62,6 +70,7 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
   checks=()
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
+    [[ "$file" =~ $path_name ]] || { echo "$file is no path the helper takes: each part $part" >&2; exit 1; }
     name=${file##*/}
     case "$name" in
       [0-9][0-9]-*.sh)
