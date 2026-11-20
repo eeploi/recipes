@@ -80,8 +80,9 @@ jobs:
           for provider in a "$long"; do [ -f "dist/99.0.2/recipes-99.0.2-$provider-ubuntu-26.04.manifest" ]; done
 
       # In a copy of the tree: an always step with a value the helper does not fill fails the
-      # layout, and does not render to run on its own. A step that is a link fails the layout, and
-      # a link to php-source.sh, which the layout doesn't read, fails the release.
+      # layout, and does not render to run on its own. A step that is a link fails the layout, as does
+      # a file in the list with a path the helper refuses, and a link to php-source.sh, which the
+      # layout doesn't read, fails the release.
       - name: layout and release, refused
         run: |
           git worktree add -q --detach "$RUNNER_TEMP/refused" HEAD
@@ -97,6 +98,14 @@ jobs:
           if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a link'; exit 1; fi
           echo "$out"
           grep -qxF 'ubuntu-26.04/steps: stack/09-logs.sh is a link' <<< "$out"
+          cp ubuntu-26.04/steps "$RUNNER_TEMP/steps"
+          echo ': # a file' > stack/-x.sh
+          echo stack/-x.sh >> ubuntu-26.04/steps
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a path the helper refuses'; exit 1; fi
+          echo "$out"
+          grep -qxF 'ubuntu-26.04/steps: stack/-x.sh is no path the helper takes: each part [A-Za-z0-9_][A-Za-z0-9._-]*' <<< "$out"
+          mv "$RUNNER_TEMP/steps" ubuntu-26.04/steps
+          rm stack/-x.sh
           rm stack/09-logs.sh
           mv stack/09-logs.txt stack/09-logs.sh
           mv ubuntu-26.04/php-source.sh ubuntu-26.04/php-source.txt
