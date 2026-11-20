@@ -65,8 +65,9 @@ jobs:
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
 
       # In a copy of the tree: an always step with a value the helper does not fill fails the
-      # layout, and does not render to run on its own.
-      - name: layout, refused
+      # layout, and does not render to run on its own. A step that is a link fails the layout, and
+      # a link to php-source.sh, which the layout doesn't read, fails the release.
+      - name: layout and release, refused
         run: |
           git worktree add -q --detach "$RUNNER_TEMP/refused" HEAD
           cd "$RUNNER_TEMP/refused"
@@ -76,6 +77,23 @@ jobs:
           grep -qF 'stack/09-logs.sh: is always, and the helper does not fill {ranges}' <<< "$out"
           if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
           git checkout -q stack/09-logs.sh
+          mv stack/09-logs.sh stack/09-logs.txt
+          ln -s 09-logs.txt stack/09-logs.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a link'; exit 1; fi
+          echo "$out"
+          grep -qxF 'ubuntu-26.04/steps: stack/09-logs.sh is a link' <<< "$out"
+          rm stack/09-logs.sh
+          git checkout -q stack/09-logs.sh
+          rm stack/09-logs.txt
+          mv ubuntu-26.04/php-source.sh ubuntu-26.04/php-source.txt
+          ln -s php-source.txt ubuntu-26.04/php-source.sh
+          git add -A
+          git -c user.name=CI -c user.email=ci@example.invalid commit -qm 'A link'
+          bin/check-layout.sh
+          git tag v99.0.1
+          if out=$(bin/release.sh 99.0.1 0.1.0 example 2>&1); then echo "$out"; echo 'release took a link'; exit 1; fi
+          echo "$out"
+          grep -qxF 'ubuntu-26.04/php-source.sh in v99.0.1 is no plain file (mode 120000)' <<< "$out"
 
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
       # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks the repo layout: every file in ubuntu-*/steps exists, and every step in it
+# Checks the repo layout: every file in ubuntu-*/steps exists and is no link, and every step in it
 # sets STEP=, has its .check.sh next to it, has one marker in markers and is in the README table.
 # An always step holds only the values the helper fills.
 set -uo pipefail
@@ -24,6 +24,10 @@ for list in ubuntu-*/steps; do
       bad "$list" "$file does not exist"
       continue
     fi
+    if [ -L "$file" ]; then
+      bad "$list" "$file is a link"
+      continue
+    fi
 
     name=${file##*/}
     case "$name" in [0-9][0-9]-*.sh) ;; *) continue ;; esac # start.sh and values.sh are no steps
@@ -31,7 +35,13 @@ for list in ubuntu-*/steps; do
     grep -q '^STEP=' "$file" || bad "$file" "sets no STEP="
     case " $NO_CHECK " in
       *" $file "*) ;;
-      *) [ -f "${file%.sh}.check.sh" ] || bad "$file" "has no ${name%.sh}.check.sh" ;;
+      *)
+        if [ ! -f "${file%.sh}.check.sh" ]; then
+          bad "$file" "has no ${name%.sh}.check.sh"
+        elif [ -L "${file%.sh}.check.sh" ]; then
+          bad "${file%.sh}.check.sh" "is a link"
+        fi
+        ;;
     esac
     case $(awk -v f="$file" '$1 !~ /^#/ && $2 == f' markers | wc -l | tr -d ' ') in
       0) bad "$file" "has no marker in markers" ;;
