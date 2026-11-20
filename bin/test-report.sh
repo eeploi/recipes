@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs report() from first-boot/start.sh against a fake eeploi on localhost, with a try every
 # second and a short cap: taken at once, taken after failures, refused at once, refused after
-# failures, a redirect, the cap with eeploi down and with no connection at all. The URL's token never shows in the output. For CI.
+# failures, a redirect, the cap with eeploi down and with no connection at all. The URL's token
+# never shows in the output. For CI.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

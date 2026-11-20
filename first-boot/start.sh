@@ -8,7 +8,8 @@ export HOME=/root COMPOSER_HOME=/root/.config/composer
 REPORT_URL={report_url}
 # A report to eeploi tries every 30 seconds until eeploi takes it (2xx) or refuses it (a 3xx, or
 # any other 4xx than 408 and 429: the link has expired or was used), and stops 30 minutes after
-# the script started, about when eeploi's own window ends. Each try prints its number and HTTP code, never the URL.
+# the script started, about when eeploi's own window ends. Each try prints its number and HTTP
+# code, never the URL.
 REPORT_EVERY=30
 REPORT_FOR=1800
 report() {
