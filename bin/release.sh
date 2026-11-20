@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Builds a release from its tag, not from the working copy: the package (the files a server runs,
 # as a tar.gz) and a manifest per provider and Ubuntu release, in dist/VERSION/. Signs nothing: it
-# prints the manifests to sign with the recipes key.
+# prints the manifests to sign with the recipes key (RECIPES_KEY sets another key file).
 # Usage: bin/release.sh VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.0 0.5.0 example
 set -euo pipefail
 cd "$(dirname "$0")/.."
+key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
 
 [ "$#" -ge 3 ] || { echo "Usage: bin/release.sh VERSION MIN_HELPER PROVIDER..." >&2; exit 2; }
 version=$1
@@ -109,4 +110,4 @@ echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
 ls -1 "$out"
 echo
 echo 'Sign each manifest with the recipes key, then add the package, the manifests and their .minisig files to the GitHub release:'
-for manifest in "$out"/*.manifest; do echo "  minisign -Sm $manifest"; done
+for manifest in "$out"/*.manifest; do printf '  minisign -S -s %q -m %q\n' "$key" "$manifest"; done
