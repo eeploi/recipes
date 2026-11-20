@@ -98,13 +98,12 @@ jobs:
           if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a link'; exit 1; fi
           echo "$out"
           grep -qxF 'ubuntu-26.04/steps: stack/09-logs.sh is a link' <<< "$out"
-          cp ubuntu-26.04/steps "$RUNNER_TEMP/steps"
           echo ': # a file' > stack/-x.sh
           echo stack/-x.sh >> ubuntu-26.04/steps
           if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a path the helper refuses'; exit 1; fi
           echo "$out"
           grep -qxF 'ubuntu-26.04/steps: stack/-x.sh is no path the helper takes: each part [A-Za-z0-9_][A-Za-z0-9._-]*' <<< "$out"
-          mv "$RUNNER_TEMP/steps" ubuntu-26.04/steps
+          git checkout -q ubuntu-26.04/steps
           rm stack/-x.sh
           rm stack/09-logs.sh
           mv stack/09-logs.txt stack/09-logs.sh
@@ -218,8 +217,9 @@ jobs:
             bash <(bin/render.sh --check stack/06-fail2ban.sh)
             systemctl is-active fail2ban'
 
-      # The checks of steps 6 and 9 fail on another SSH port in the jail, and on another user in
-      # the log path or the su line. Then each step writes its file again and its check passes.
+      # The checks of steps 6 and 9 fail on their new lines: another SSH port in the jail, another
+      # user in the log path or the su line. Then each step writes its file again and its check
+      # passes.
       - name: checks of 6 and 9, the values
         run: |
           docker exec twice bash -euc '
@@ -227,13 +227,14 @@ jobs:
               bin/render.sh --step $1 > /tmp/step
               bin/render.sh --check $1 > /tmp/check
               sed -i "$3" $2
-              if bash /tmp/check > /dev/null 2>&1; then echo "$1: check passed after $3"; exit 1; fi
+              if bash /tmp/check > /tmp/out 2>&1; then echo "$1: check passed after $3"; exit 1; fi
+              grep -qF "$4" /tmp/out || { cat /tmp/out; echo "$1: another line failed after $3"; exit 1; }
               bash /tmp/step
               bash /tmp/check
             }
-            fails stack/06-fail2ban.sh /etc/fail2ban/jail.d/eeploi.conf "s/^port = .*/port = 10023/"
-            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s|^/home/deploy/|/home/other/|"
-            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s/^    su .*/    su other other/"'
+            fails stack/06-fail2ban.sh /etc/fail2ban/jail.d/eeploi.conf "s/^port = .*/port = 10023/" "port = \$SSH_PORT"
+            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s|^/home/deploy/|/home/other/|" "/home/\$DEPLOY_USER"
+            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s/^    su .*/    su root root/" "su \$DEPLOY_USER"'
 
       # Step 0 runs only at a first boot, so it is named here. Then its check passes with a comment
       # added, and fails on a key more, a key less, a key twice, another port, root as the user, and

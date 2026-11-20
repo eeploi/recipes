@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks the repo layout: every file in ubuntu-*/steps has a path the helper takes, exists and is no
-# link, and every step in it
-# sets STEP=, has its .check.sh next to it, has one marker in markers and is in the README table.
+# link, and every step in it sets STEP=, has its .check.sh next to it, has one marker in markers
+# and is in the README table.
 # An always step holds only the values the helper fills (bin/render.sh --step).
 set -uo pipefail
 export LC_ALL=C # the path rule below matches ASCII only, as the helper's
