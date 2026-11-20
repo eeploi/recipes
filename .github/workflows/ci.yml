@@ -85,6 +85,27 @@ jobs:
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash <(bin/render.sh --check stack/07-updates.sh)'
 
+      # Step 6 with another jail file broken: the step fails and leaves eeploi's jail as it was,
+      # changed or not there. Then, with that file gone, the step and its check pass again.
+      - name: fail2ban, a broken jail
+        run: |
+          docker exec twice bash -euc '
+            jail=/etc/fail2ban/jail.d/eeploi.conf
+            bin/render.sh --step stack/06-fail2ban.sh > /tmp/step
+            echo "not a jail" > /etc/fail2ban/jail.d/broken.conf
+            echo "# changed" >> $jail
+            cp -a $jail /tmp/jail.old
+            if bash /tmp/step; then echo "step passed with a broken jail"; exit 1; fi
+            cmp $jail /tmp/jail.old
+            [ ! -e $jail.prev ]
+            rm $jail
+            if bash /tmp/step; then echo "step passed with a broken jail"; exit 1; fi
+            [ ! -e $jail ] && [ ! -e $jail.prev ]
+            rm /etc/fail2ban/jail.d/broken.conf
+            bash /tmp/step
+            bash <(bin/render.sh --check stack/06-fail2ban.sh)
+            systemctl is-active fail2ban'
+
       # Step 0 runs only at a first boot, so it is named here. Then its check passes with a comment
       # added, and fails on a key more, a key less, a key twice, another port, root as the user, and
       # another mode of the file or its directory.
