@@ -64,6 +64,19 @@ jobs:
           diff <(tar -tzf dist/99.0.0/recipes-99.0.0.tar.gz | grep -v '/$' | LC_ALL=C sort) <(awk '{ print $2 }' "$RUNNER_TEMP/sums" | LC_ALL=C sort)
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
 
+      # In a copy of the tree: an always step with a value the helper does not fill fails the
+      # layout, and does not render to run on its own.
+      - name: layout, refused
+        run: |
+          git worktree add -q --detach "$RUNNER_TEMP/refused" HEAD
+          cd "$RUNNER_TEMP/refused"
+          echo '# {ranges}' >> stack/09-logs.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed {ranges} in an always step'; exit 1; fi
+          echo "$out"
+          grep -qF 'stack/09-logs.sh: is always, and the helper does not fill {ranges}' <<< "$out"
+          if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
+          git checkout -q stack/09-logs.sh
+
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
       # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted
       # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and

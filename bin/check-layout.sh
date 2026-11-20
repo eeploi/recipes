@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Checks the repo layout: every file in ubuntu-*/steps exists, and every step in it
 # sets STEP=, has its .check.sh next to it, has one marker in markers and is in the README table.
+# An always step holds only the values the helper fills.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 # Steps without a check, by name. They only run at the first boot eeploi creates, and talk to the
 # network (the helper download, the report to eeploi), so a read-only check has nothing to read.
 NO_CHECK='first-boot/00-helper-download.sh first-boot/11-report.sh'
+
+# The values the helper fills in a step it runs on a live server. It refuses any other {name}.
+HELPER_VALUES='{user} {port} {php} {version} {name}'
 
 fail=0
 bad() { echo "$1: $2"; fail=1; }
@@ -53,6 +57,16 @@ while read -r marker file flags rest || [ -n "$marker" ]; do
   case " $NO_CHECK " in *" $file "*) no_check=1 ;; *) no_check=0 ;; esac
   if [ "$marker" != first-boot ] && { [[ "$file" == first-boot/* ]] || [ "$no_check" -eq 1 ]; }; then
     bad markers "$file can only be first-boot"
+  fi
+  # A {name} as bin/render.sh finds one: ${name} and $x{name} are bash.
+  if [ "$marker" = always ] && [ -f "$file" ]; then
+    # shellcheck disable=SC2016 # the $ is in a regex
+    while IFS= read -r placeholder; do
+      case " $HELPER_VALUES " in
+        *" $placeholder "*) ;;
+        *) bad "$file" "is always, and the helper does not fill $placeholder (only $HELPER_VALUES)" ;;
+      esac
+    done < <(grep -oE '(^|[^$A-Za-z0-9_])\{[a-z_]+\}' "$file" | grep -oE '\{[a-z_]+\}' | sort -u)
   fi
 done < markers
 
