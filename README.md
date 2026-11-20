@@ -82,7 +82,7 @@ Its check: `/etc/eeploi` is root's and 0755; the user (not root) and the port (2
 
 ## Releases
 
-`bin/release.sh VERSION MIN_HELPER PROVIDER...` builds a release from its tag `vVERSION`, not from the working copy, in `dist/VERSION/`: one package with every file a server runs (`recipes-VERSION.tar.gz`) and a manifest per provider and Ubuntu release (`recipes-VERSION-PROVIDER-ubuntu-26.04.manifest`). It refuses a file that is not a plain file, such as a link. It signs nothing: it prints the manifests to sign with the recipes minisign key. The signature covers the whole manifest, and the manifest has the SHA-256 of every file.
+`bin/release.sh VERSION MIN_HELPER PROVIDER...` builds a release from its tag `vVERSION`, not from the working copy, in `dist/VERSION/`: one package with every file a server runs (`recipes-VERSION.tar.gz`) and a manifest per provider and Ubuntu release (`recipes-VERSION-PROVIDER-ubuntu-26.04.manifest`). It refuses a file that is not a plain file, such as a link. It signs nothing: it prints the command to sign each manifest with the recipes minisign key: `minisign -S -s ~/.minisign/eeploi-recipes.key -m MANIFEST` (set `RECIPES_KEY` for another key file). The signature covers the whole manifest, and the manifest has the SHA-256 of every file.
 
 A manifest is plain text, one fact per line:
 
