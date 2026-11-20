@@ -131,7 +131,7 @@ jobs:
             [ ! -e "dist/99.1.$n" ]
             git reset -q --hard HEAD~1
           }
-          for path in stack/-x.sh -stack/x.sh stack/.x.sh stack/../stack/values.sh 'stack/a b.sh'; do
+          for path in stack/-x.sh -stack/x.sh -stack/01-x.sh stack/.x.sh stack/../stack/values.sh 'stack/a b.sh'; do
             mkdir -p -- "$(dirname -- "$path")"
             [ -e "$path" ] || echo ': # a file' > "$path"
             echo "$path" >> ubuntu-26.04/steps
@@ -229,8 +229,8 @@ jobs:
             chmod 600 /etc/eeploi/recipes.conf; fails "another mode"
             bash /tmp/check'
 
-      # Every check runs on its own and leaves /etc and the units as they were, passing or not.
-      # Then a check with a line more that writes to /etc fails it.
+      # Every check runs on its own and leaves /etc, fail2ban and nginx as they were, passing or
+      # not. Then a check with a line more that writes to /etc, or that restarts nginx, fails it.
       - name: checks, read-only
         run: |
           docker exec twice bash -euc '
@@ -241,7 +241,12 @@ jobs:
             if out=$(bin/checks-read-only.sh stack/09-logs.sh); then echo "$out"; echo "a check that writes passed"; exit 1; fi
             echo "$out"
             grep -qxF "stack/09-logs.check.sh: changed the server" <<< "$out"
-            rm /etc/written'
+            rm /etc/written
+            cp /recipes/stack/09-logs.check.sh stack/
+            echo "systemctl restart nginx" >> stack/09-logs.check.sh
+            if out=$(bin/checks-read-only.sh stack/09-logs.sh); then echo "$out"; echo "a check that restarts nginx passed"; exit 1; fi
+            echo "$out"
+            grep -qxF "stack/09-logs.check.sh: changed the server" <<< "$out"'
 
       # The fingerprint prints only known facts, in the container and on the runner, a real VM,
       # and leaves /etc as it was.

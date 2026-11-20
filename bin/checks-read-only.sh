@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Runs each check in ubuntu-*/steps on its own, as root in a throwaway container, and fails one
-# that changes /etc or the state of a unit, whether the check passes or not: a check is read-only.
-# For CI only.
+# Runs each check in ubuntu-26.04/steps on its own, as root in a throwaway container, and fails one
+# that changes /etc, or stops, starts or restarts fail2ban or nginx, whether the check passes or
+# not: a check is read-only. A check that fails stops at its failing line, so lines after it are not
+# tested here. For CI only.
 # Usage: bin/checks-read-only.sh [FILE...]   the checks of those steps instead of all
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -9,24 +10,30 @@ cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# A restart changes the main PID. Only these two: other units, timers among them, change on their own.
 state() {
   bin/etc-state.sh
-  systemctl list-units --all --plain --no-legend | awk '{ print $1, $2, $3, $4 }' | LC_ALL=C sort
+  systemctl show -p Id,ActiveState,MainPID fail2ban nginx
 }
 
 fail=0
-while read -r file; do
-  [ -f "${file%.sh}.check.sh" ] || continue
-  bin/render.sh --check "$file" > "$tmp/check"
+while IFS= read -r file; do
+  check=${file%.sh}.check.sh
+  [ -f "$check" ] || continue
+  if ! bin/render.sh --check "$file" > "$tmp/check"; then
+    echo "$check: does not render"
+    fail=1
+    continue
+  fi
   state > "$tmp/before"
   bash "$tmp/check" < /dev/null > /dev/null 2>&1 || true
   state > "$tmp/after"
   if diff "$tmp/before" "$tmp/after"; then
-    echo "${file%.sh}.check.sh: read-only"
+    echo "$check: read-only"
   else
-    echo "${file%.sh}.check.sh: changed the server"
+    echo "$check: changed the server"
     fail=1
   fi
-done < <(if [ "$#" -gt 0 ]; then printf '%s\n' "$@"; else grep -hE '/[0-9]{2}-[^/]*\.sh$' ubuntu-*/steps; fi)
+done < <(if [ "$#" -gt 0 ]; then printf '%s\n' "$@"; else grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps; fi)
 
 exit "$fail"
