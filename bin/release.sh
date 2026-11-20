@@ -92,8 +92,16 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
 done
 
 # One package for every manifest: each file once, in a fixed order, so the same tag builds the same bytes.
-# shellcheck disable=SC2046 # no path has a space: markers could not hold it
-git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" $(printf '%s\n' "${paths[@]}" | LC_ALL=C sort -u)
+# Only plain files: the package would hold a link where the manifest has its target's SHA-256.
+sorted=()
+while IFS= read -r path; do sorted+=("$path"); done < <(printf '%s\n' "${paths[@]}" | LC_ALL=C sort -u)
+listed=0
+while read -r mode _ _ path; do
+  case "$mode" in 100644 | 100755) ;; *) echo "$path in $tag is no plain file (mode $mode)" >&2; exit 1 ;; esac
+  listed=$((listed + 1))
+done < <(git --literal-pathspecs ls-tree -r "$tag" -- "${sorted[@]}")
+[ "$listed" -eq "${#sorted[@]}" ] || { echo "git ls-tree lists $listed of ${#sorted[@]} files in $tag" >&2; exit 1; }
+git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted[@]}"
 
 mkdir -p dist
 mv "$build" "$out"

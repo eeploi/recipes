@@ -64,9 +64,40 @@ jobs:
           diff <(tar -tzf dist/99.0.0/recipes-99.0.0.tar.gz | grep -v '/$' | LC_ALL=C sort) <(awk '{ print $2 }' "$RUNNER_TEMP/sums" | LC_ALL=C sort)
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
 
+      # In a copy of the tree: an always step with a value the helper does not fill fails the
+      # layout, and does not render to run on its own. A step that is a link fails the layout, and
+      # a link to php-source.sh, which the layout doesn't read, fails the release.
+      - name: layout and release, refused
+        run: |
+          git worktree add -q --detach "$RUNNER_TEMP/refused" HEAD
+          cd "$RUNNER_TEMP/refused"
+          echo '# {ranges}' >> stack/09-logs.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed {ranges} in an always step'; exit 1; fi
+          echo "$out"
+          grep -qxF 'stack/09-logs.sh: is always, and holds a value the helper does not fill' <<< "$out"
+          if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
+          git checkout -q stack/09-logs.sh
+          mv stack/09-logs.sh stack/09-logs.txt
+          ln -s 09-logs.txt stack/09-logs.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a link'; exit 1; fi
+          echo "$out"
+          grep -qxF 'ubuntu-26.04/steps: stack/09-logs.sh is a link' <<< "$out"
+          rm stack/09-logs.sh
+          mv stack/09-logs.txt stack/09-logs.sh
+          mv ubuntu-26.04/php-source.sh ubuntu-26.04/php-source.txt
+          ln -s php-source.txt ubuntu-26.04/php-source.sh
+          git add -A
+          git -c user.name=CI -c user.email=ci@example.invalid commit -qm 'A link'
+          bin/check-layout.sh
+          git tag v99.0.1
+          if out=$(bin/release.sh 99.0.1 0.1.0 example 2>&1); then echo "$out"; echo 'release took a link'; exit 1; fi
+          echo "$out"
+          grep -qxF 'ubuntu-26.04/php-source.sh in v99.0.1 is no plain file (mode 120000)' <<< "$out"
+
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
       # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted
-      # read-only, so modprobe reads a real kernel's. Then 07's check must fail without its apt
+      # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
+      # the services still run after all of them. Then 07's check must fail without its apt
       # lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
@@ -82,8 +113,45 @@ jobs:
           docker exec twice bash -euc '
             systemctl is-active fail2ban nginx
             bin/run-twice.sh
+            systemctl is-active fail2ban nginx
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash <(bin/render.sh --check stack/07-updates.sh)'
+
+      # A step that leaves a unit failed fails bin/run-twice.sh: step 9, in a copy of the repo,
+      # with a line more that breaks nginx. Then nginx runs again.
+      - name: twice, a step that fails a unit
+        run: |
+          docker exec twice bash -euc '
+            cp -a /recipes /tmp/recipes
+            cd /tmp/recipes
+            echo "echo broken > /etc/nginx/conf.d/broken.conf; systemctl restart nginx || true" >> stack/09-logs.sh
+            if out=$(bin/run-twice.sh stack/09-logs.sh); then echo "$out"; echo "run-twice passed with nginx failed"; exit 1; fi
+            echo "$out"
+            grep -qE "^stack/09-logs.sh: left failed: (.* )?nginx.service( |$)" <<< "$out"
+            rm /etc/nginx/conf.d/broken.conf
+            systemctl reset-failed nginx
+            systemctl start nginx'
+
+      # Step 6 with another jail file broken: the step fails and leaves eeploi's jail as it was,
+      # changed or not there. Then, with that file gone, the step and its check pass again.
+      - name: fail2ban, a broken jail
+        run: |
+          docker exec twice bash -euc '
+            jail=/etc/fail2ban/jail.d/eeploi.conf
+            bin/render.sh --step stack/06-fail2ban.sh > /tmp/step
+            echo "not a jail" > /etc/fail2ban/jail.d/broken.conf
+            echo "# changed" >> $jail
+            cp -a $jail /tmp/jail.old
+            if bash /tmp/step; then echo "step passed with a broken jail"; exit 1; fi
+            cmp $jail /tmp/jail.old
+            [ ! -e $jail.prev ]
+            rm $jail
+            if bash /tmp/step; then echo "step passed with a broken jail"; exit 1; fi
+            [ ! -e $jail ] && [ ! -e $jail.prev ]
+            rm /etc/fail2ban/jail.d/broken.conf
+            bash /tmp/step
+            bash <(bin/render.sh --check stack/06-fail2ban.sh)
+            systemctl is-active fail2ban'
 
       # Step 0 runs only at a first boot, so it is named here. Then its check passes with a comment
       # added, and fails on a key more, a key less, a key twice, another port, root as the user, and

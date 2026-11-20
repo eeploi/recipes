@@ -5,7 +5,8 @@
 # gets php-source.sh.
 # Usage: bin/render.sh [--no-first-boot | --checks | --step FILE | --check FILE]
 #   --checks        the values, then the check of each step, each on its own, as one script
-#   --step FILE     start.sh, the values and that one step, to run on its own (bin/run-twice.sh)
+#   --step FILE     start.sh, the values and that one step, to run on its own (bin/run-twice.sh),
+#                   with only the values the helper fills on a live server: any other is left over
 #   --check FILE    as --checks, with only that step's check
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -16,18 +17,21 @@ case "$mode" in --step | --check) [ -f "$step" ] || { echo "$mode needs a step f
 
 left=0
 
-# A step that runs gets a real line for {real_ip}, since its nginx -t reads it.
-real_ip=':'
-case "$mode" in --step) real_ip='set_real_ip_from 192.0.2.0\/24;' ;; esac
+# The values the helper fills on a live server, the only ones in --step. bin/check-layout.sh
+# renders each always step with --step, so this is the one list of them.
+helper_values='s/\{user\}/deploy/g; s/\{port\}/10022/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g; s/\{name\}/shop.example/g'
 
 render() {
   local out
-  out=$(sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E -e "s/^\\{real_ip\\}$/$real_ip/" \
-    -e 's/^\{[a-z_]+\}$/:/' \
-    -e 's/\{user\}/deploy/g; s/\{port\}/10022/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g' \
-    -e 's/\{name\}/shop.example/g; s/\{report_url\}/https:\/\/eeploi.example\/report/g' \
-    -e 's/\{ranges\}/192.0.2.0\/24 198.51.100.0\/24/g; s/\{database\}/mariadb-server/g; s/\{npm\}/11.0.0/g' \
-    -e 's/\{helper_path\}/\/usr\/local\/bin\/eeploi-helper/g; s/\{codename\}/resolute/g')
+  if [ "$mode" = --step ]; then
+    out=$(sed -E -e "$helper_values" "$1")
+  else
+    out=$(sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E \
+      -e 's/^\{[a-z_]+\}$/:/' -e "$helper_values" \
+      -e 's/\{report_url\}/https:\/\/eeploi.example\/report/g' \
+      -e 's/\{ranges\}/192.0.2.0\/24 198.51.100.0\/24/g; s/\{database\}/mariadb-server/g; s/\{npm\}/11.0.0/g' \
+      -e 's/\{helper_path\}/\/usr\/local\/bin\/eeploi-helper/g; s/\{codename\}/resolute/g')
+  fi
   printf '%s\n' "$out"
   # A {name} left over is a value this script doesn't know. ${name} and $x{name} are bash.
   # shellcheck disable=SC2016 # the $ is in a regex

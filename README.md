@@ -30,7 +30,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 3 | `stack/03-sudo.sh` | eeploi-helper and its one sudo rule |
 | 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
-| 6 | `stack/06-fail2ban.sh` | fail2ban for SSH, taken at once by a running fail2ban |
+| 6 | `stack/06-fail2ban.sh` | fail2ban for SSH, taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, services restarted after one, SCTP kernel module blocked |
 | 8 | `stack/08-nginx.sh` | Real visitor IPs, a catch-all for unknown hosts |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |
@@ -48,7 +48,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | Marker | Runs |
 |---|---|
 | `first-boot` | Only when a server is installed. Every step in `first-boot/` has it |
-| `always` | On a live server too, in a rollout to every server |
+| `always` | On a live server too, in a rollout to every server. The helper fills only `{user}`, `{port}`, `{php}`, `{version}` and `{name}` in it |
 | `window` | On a live server only with a manual "update now" |
 
 A third column may hold flags, comma separated, set by the pull request that changes the step: `security` (the change is a security fix), `needs-restart` (a service must restart for it), `needs-reboot` (it takes effect after a reboot). No flags, no column.
@@ -61,7 +61,7 @@ Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check th
 
 ## CI
 
-One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. `bin/test-report.sh` runs the report to eeploi against a fake eeploi, with the cases in its header. Then `bin/run-twice.sh` runs each `always` step twice in a fresh `ubuntu:26.04` container, then its check, and fails a step whose second run changes `/etc`. Then the check of step 7 must fail without its apt lines, step 0 writes the values file twice and its check must fail on a changed file, and the fingerprint must print only known facts, in the container and on the runner. Last, `bin/release.sh` builds a release from a local tag, and every file in its package must match its manifest.
+One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists and is no link, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above, and an `always` step holds no other value than `{user}`, `{port}`, `{php}`, `{version}` and `{name}`), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. `bin/test-report.sh` runs the report to eeploi against a fake eeploi, with the cases in its header. An `always` step with `{ranges}` and a step that is a link must fail the layout check, and a release with a link must fail. Then `bin/run-twice.sh` runs each `always` step twice, with only the values the helper fills, in a fresh `ubuntu:26.04` container, then its check, and fails a step whose second run changes `/etc` or that leaves a unit failed; then fail2ban and nginx must still run. A step that breaks nginx must fail it. Then the check of step 7 must fail without its apt lines, step 6 must fail and leave its jail as it was when another jail file is broken, step 0 writes the values file twice and its check must fail on a changed file, and the fingerprint must print only known facts, in the container and on the runner. Last, `bin/release.sh` builds a release from a local tag, and every file in its package must match its manifest.
 
 ## Values
 
@@ -82,7 +82,7 @@ Its check: `/etc/eeploi` is root's and 0755; the user (not root) and the port (2
 
 ## Releases
 
-`bin/release.sh VERSION MIN_HELPER PROVIDER...` builds a release from its tag `vVERSION`, not from the working copy, in `dist/VERSION/`: one package with every file a server runs (`recipes-VERSION.tar.gz`) and a manifest per provider and Ubuntu release (`recipes-VERSION-PROVIDER-ubuntu-26.04.manifest`). It signs nothing: it prints the manifests to sign with the recipes minisign key. The signature covers the whole manifest, and the manifest has the SHA-256 of every file.
+`bin/release.sh VERSION MIN_HELPER PROVIDER...` builds a release from its tag `vVERSION`, not from the working copy, in `dist/VERSION/`: one package with every file a server runs (`recipes-VERSION.tar.gz`) and a manifest per provider and Ubuntu release (`recipes-VERSION-PROVIDER-ubuntu-26.04.manifest`). It refuses a file that is not a plain file, such as a link. It signs nothing: it prints the manifests to sign with the recipes minisign key. The signature covers the whole manifest, and the manifest has the SHA-256 of every file.
 
 A manifest is plain text, one fact per line:
 

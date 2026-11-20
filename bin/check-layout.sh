@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Checks the repo layout: every file in ubuntu-*/steps exists, and every step in it
+# Checks the repo layout: every file in ubuntu-*/steps exists and is no link, and every step in it
 # sets STEP=, has its .check.sh next to it, has one marker in markers and is in the README table.
+# An always step holds only the values the helper fills (bin/render.sh --step).
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
@@ -20,6 +21,10 @@ for list in ubuntu-*/steps; do
       bad "$list" "$file does not exist"
       continue
     fi
+    if [ -L "$file" ]; then
+      bad "$list" "$file is a link"
+      continue
+    fi
 
     name=${file##*/}
     case "$name" in [0-9][0-9]-*.sh) ;; *) continue ;; esac # start.sh and values.sh are no steps
@@ -27,7 +32,11 @@ for list in ubuntu-*/steps; do
     grep -q '^STEP=' "$file" || bad "$file" "sets no STEP="
     case " $NO_CHECK " in
       *" $file "*) ;;
-      *) [ -f "${file%.sh}.check.sh" ] || bad "$file" "has no ${name%.sh}.check.sh" ;;
+      *)
+        check=${file%.sh}.check.sh
+        [ -f "$check" ] || bad "$file" "has no ${check##*/}"
+        [ ! -L "$check" ] || bad "$check" "is a link"
+        ;;
     esac
     case $(awk -v f="$file" '$1 !~ /^#/ && $2 == f' markers | wc -l | tr -d ' ') in
       0) bad "$file" "has no marker in markers" ;;
@@ -53,6 +62,10 @@ while read -r marker file flags rest || [ -n "$marker" ]; do
   case " $NO_CHECK " in *" $file "*) no_check=1 ;; *) no_check=0 ;; esac
   if [ "$marker" != first-boot ] && { [[ "$file" == first-boot/* ]] || [ "$no_check" -eq 1 ]; }; then
     bad markers "$file can only be first-boot"
+  fi
+  # On a live server the helper fills only the values bin/render.sh --step fills, and refuses any other.
+  if [ "$marker" = always ] && [ -f "$file" ] && ! bin/render.sh --step "$file" > /dev/null; then
+    bad "$file" "is always, and holds a value the helper does not fill"
   fi
 done < markers
 
