@@ -21,10 +21,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             f.write(body + b'\n')
         with open(codes_file) as f:
             codes = f.read().split()
-        code = int(codes.pop(0)) if len(codes) > 1 else int(codes[0])
+        code = codes.pop(0) if len(codes) > 1 else codes[0]
         with open(codes_file, 'w') as f:
-            f.write(' '.join(codes or [str(code)]))
-        self.send_response(code)
+            f.write(' '.join(codes))
+        self.send_response(int(code))
         self.send_header('Content-Length', '0')
         self.end_headers()
     def log_message(self, *args):
@@ -39,17 +39,21 @@ server=$!
 for _ in $(seq 50); do [ -s "$tmp/port" ] && break; sleep 0.1; done
 port=$(cat "$tmp/port")
 
+# report() as the server runs it, from the rendered first boot.
+report=$(bin/render.sh | sed -n '/^report() {$/,/^}$/p')
+
 fail=0
-# case_ NAME CODES CAP EXPECT MIN MAX: with a cap of CAP seconds, report() exits EXPECT (0 or
-# 1) after MIN to MAX tries. The cap counts whole seconds, so it allows one try more or less.
+# case_ NAME CODES CAP EXPECT MIN MAX UP: with a cap of CAP seconds, report() exits EXPECT (0 or
+# 1) after MIN to MAX tries. The cap counts whole seconds, so it allows one try more or less. UP
+# is 1 when the fake eeploi listens, so it must have got the report on each try.
 case_() {
-  local name=$1 codes=$2 cap=$3 expect=$4 min=$5 max=$6 rc tries
+  local name=$1 codes=$2 cap=$3 expect=$4 min=$5 max=$6 up=$7 rc tries
   echo "$codes" > "$tmp/codes"
   : > "$tmp/bodies"
   bash -c "
     set -euo pipefail
     REPORT_URL='http://127.0.0.1:$port/report/secret-token?signature=secret-signature'
-    $(sed -n '/^REPORT_EVERY=/p; /^REPORT_FOR=/p; /^report() {$/,/^}$/p' first-boot/start.sh)
+    $report
     REPORT_EVERY=1 REPORT_FOR=$cap
     report --data-urlencode 'host_keys=ssh-ed25519 AAAA'
   " > "$tmp/out" 2>&1 && rc=0 || rc=$?
@@ -64,7 +68,7 @@ case_() {
   elif grep -q secret "$tmp/out"; then
     echo "$name: the token is in the output"
     fail=1
-  elif [ -n "$server" ] && [ "$(grep -cx 'host_keys=ssh-ed25519+AAAA' "$tmp/bodies")" -ne "$tries" ]; then
+  elif [ "$up" -eq 1 ] && [ "$(grep -cx 'host_keys=ssh-ed25519+AAAA' "$tmp/bodies")" -ne "$tries" ]; then
     echo "$name: eeploi did not get the report on each try"
     fail=1
   else
@@ -72,14 +76,14 @@ case_() {
   fi
 }
 
-case_ 'taken at once' 200 30 0 1 1
-case_ 'taken after failures' '503 530 408 429 500 204' 30 0 6 6
-case_ 'refused at once' 410 30 1 1 1
-case_ 'eeploi down, the cap' 503 4 1 3 5
+case_ 'taken at once' 200 30 0 1 1 1
+case_ 'taken after failures' '503 530 408 429 500 204' 30 0 6 6 1
+case_ 'refused at once' 410 30 1 1 1 1
+case_ 'eeploi down, the cap' 503 4 1 3 5 1
 # A port nothing listens on: the fake eeploi's, once it is stopped.
 kill "$server"
 wait "$server" 2> /dev/null || true
 server=''
-case_ 'no connection, the cap' 200 4 1 3 5
+case_ 'no connection, the cap' 200 4 1 3 5 0
 
 exit "$fail"
