@@ -74,7 +74,7 @@ jobs:
           echo '# {ranges}' >> stack/09-logs.sh
           if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed {ranges} in an always step'; exit 1; fi
           echo "$out"
-          grep -qF 'stack/09-logs.sh: is always, and the helper does not fill {ranges}' <<< "$out"
+          grep -qxF 'stack/09-logs.sh: is always, and holds a value the helper does not fill' <<< "$out"
           if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
           git checkout -q stack/09-logs.sh
           mv stack/09-logs.sh stack/09-logs.txt
@@ -83,8 +83,7 @@ jobs:
           echo "$out"
           grep -qxF 'ubuntu-26.04/steps: stack/09-logs.sh is a link' <<< "$out"
           rm stack/09-logs.sh
-          git checkout -q stack/09-logs.sh
-          rm stack/09-logs.txt
+          mv stack/09-logs.txt stack/09-logs.sh
           mv ubuntu-26.04/php-source.sh ubuntu-26.04/php-source.txt
           ln -s php-source.txt ubuntu-26.04/php-source.sh
           git add -A

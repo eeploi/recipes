@@ -17,7 +17,8 @@ case "$mode" in --step | --check) [ -f "$step" ] || { echo "$mode needs a step f
 
 left=0
 
-# The values the helper fills, as in bin/check-layout.sh.
+# The values the helper fills on a live server, the only ones in --step. bin/check-layout.sh
+# renders each always step with --step, so this is the one list of them.
 helper_values='s/\{user\}/deploy/g; s/\{port\}/10022/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g; s/\{name\}/shop.example/g'
 
 render() {

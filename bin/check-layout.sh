@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 # Checks the repo layout: every file in ubuntu-*/steps exists and is no link, and every step in it
 # sets STEP=, has its .check.sh next to it, has one marker in markers and is in the README table.
-# An always step holds only the values the helper fills.
+# An always step holds only the values the helper fills (bin/render.sh --step).
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 # Steps without a check, by name. They only run at the first boot eeploi creates, and talk to the
 # network (the helper download, the report to eeploi), so a read-only check has nothing to read.
 NO_CHECK='first-boot/00-helper-download.sh first-boot/11-report.sh'
-
-# The values the helper fills in a step it runs on a live server. It refuses any other {name}.
-HELPER_VALUES='{user} {port} {php} {version} {name}'
 
 fail=0
 bad() { echo "$1: $2"; fail=1; }
@@ -36,11 +33,9 @@ for list in ubuntu-*/steps; do
     case " $NO_CHECK " in
       *" $file "*) ;;
       *)
-        if [ ! -f "${file%.sh}.check.sh" ]; then
-          bad "$file" "has no ${name%.sh}.check.sh"
-        elif [ -L "${file%.sh}.check.sh" ]; then
-          bad "${file%.sh}.check.sh" "is a link"
-        fi
+        check=${file%.sh}.check.sh
+        [ -f "$check" ] || bad "$file" "has no ${check##*/}"
+        [ ! -L "$check" ] || bad "$check" "is a link"
         ;;
     esac
     case $(awk -v f="$file" '$1 !~ /^#/ && $2 == f' markers | wc -l | tr -d ' ') in
@@ -68,15 +63,9 @@ while read -r marker file flags rest || [ -n "$marker" ]; do
   if [ "$marker" != first-boot ] && { [[ "$file" == first-boot/* ]] || [ "$no_check" -eq 1 ]; }; then
     bad markers "$file can only be first-boot"
   fi
-  # A {name} as bin/render.sh finds one: ${name} and $x{name} are bash.
-  if [ "$marker" = always ] && [ -f "$file" ]; then
-    # shellcheck disable=SC2016 # the $ is in a regex
-    while IFS= read -r placeholder; do
-      case " $HELPER_VALUES " in
-        *" $placeholder "*) ;;
-        *) bad "$file" "is always, and the helper does not fill $placeholder (only $HELPER_VALUES)" ;;
-      esac
-    done < <(grep -oE '(^|[^$A-Za-z0-9_])\{[a-z_]+\}' "$file" | grep -oE '\{[a-z_]+\}' | sort -u)
+  # On a live server the helper fills only the values bin/render.sh --step fills, and refuses any other.
+  if [ "$marker" = always ] && [ -f "$file" ] && ! bin/render.sh --step "$file" > /dev/null; then
+    bad "$file" "is always, and holds a value the helper does not fill"
   fi
 done < markers
 
