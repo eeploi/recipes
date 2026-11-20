@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# Checks the repo layout: every file in ubuntu-*/steps exists and is no link, and every step in it
-# sets STEP=, has its .check.sh next to it, has one marker in markers and is in the README table.
+# Checks the repo layout: every file in ubuntu-*/steps has a path the helper takes, exists and is no
+# link, and every step in it sets STEP=, has its .check.sh next to it, has one marker in markers
+# and is in the README table.
 # An always step holds only the values the helper fills (bin/render.sh --step).
 set -uo pipefail
+export LC_ALL=C # the path rule below matches ASCII only, as the helper's
 cd "$(dirname "$0")/.." || exit 1
 
 # Steps without a check, by name. They only run at the first boot eeploi creates, and talk to the
 # network (the helper download, the report to eeploi), so a read-only check has nothing to read.
 NO_CHECK='first-boot/00-helper-download.sh first-boot/11-report.sh'
+
+# The helper's rule for a path in a manifest (recipe-run), as in bin/release.sh.
+part='[A-Za-z0-9_][A-Za-z0-9._-]*'
+path_name="^$part(/$part)*\$"
 
 fail=0
 bad() { echo "$1: $2"; fail=1; }
@@ -17,6 +23,10 @@ for list in ubuntu-*/steps; do
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
 
+    if ! [[ "$file" =~ $path_name ]]; then
+      bad "$list" "$file is no path the helper takes: each part $part"
+      continue
+    fi
     if [ ! -f "$file" ]; then
       bad "$list" "$file does not exist"
       continue

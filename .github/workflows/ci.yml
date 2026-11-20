@@ -80,8 +80,9 @@ jobs:
           for provider in a "$long"; do [ -f "dist/99.0.2/recipes-99.0.2-$provider-ubuntu-26.04.manifest" ]; done
 
       # In a copy of the tree: an always step with a value the helper does not fill fails the
-      # layout, and does not render to run on its own. A step that is a link fails the layout, and
-      # a link to php-source.sh, which the layout doesn't read, fails the release.
+      # layout, and does not render to run on its own. A step that is a link fails the layout, as does
+      # a file in the list with a path the helper refuses, and a link to php-source.sh, which the
+      # layout doesn't read, fails the release.
       - name: layout and release, refused
         run: |
           git worktree add -q --detach "$RUNNER_TEMP/refused" HEAD
@@ -97,6 +98,13 @@ jobs:
           if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a link'; exit 1; fi
           echo "$out"
           grep -qxF 'ubuntu-26.04/steps: stack/09-logs.sh is a link' <<< "$out"
+          echo ': # a file' > stack/-x.sh
+          echo stack/-x.sh >> ubuntu-26.04/steps
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a path the helper refuses'; exit 1; fi
+          echo "$out"
+          grep -qxF 'ubuntu-26.04/steps: stack/-x.sh is no path the helper takes: each part [A-Za-z0-9_][A-Za-z0-9._-]*' <<< "$out"
+          git checkout -q ubuntu-26.04/steps
+          rm stack/-x.sh
           rm stack/09-logs.sh
           mv stack/09-logs.txt stack/09-logs.sh
           mv ubuntu-26.04/php-source.sh ubuntu-26.04/php-source.txt
@@ -108,6 +116,47 @@ jobs:
           if out=$(bin/release.sh 99.0.1 0.1.0 example 2>&1); then echo "$out"; echo 'release took a link'; exit 1; fi
           echo "$out"
           grep -qxF 'ubuntu-26.04/php-source.sh in v99.0.1 is no plain file (mode 120000)' <<< "$out"
+
+      # In a copy of the tree, each a commit and tag of its own: a file in the list of steps with a
+      # path the helper refuses, a part starting with - or . or holding a space, fails the release
+      # with only its message; one with _ and inner . and - builds. A NUL in the list of steps or in
+      # markers fails the release.
+      - name: release, paths and NULs refused
+        run: |
+          git worktree add -q --detach "$RUNNER_TEMP/paths" HEAD
+          cd "$RUNNER_TEMP/paths"
+          n=0
+          commit() {
+            n=$((n + 1))
+            git add -A
+            git -c user.name=CI -c user.email=ci@example.invalid commit -qm "Case $n"
+            git tag "v99.1.$n"
+          }
+          refused() {
+            if out=$(bin/release.sh "99.1.$n" 0.1.0 example 2>&1); then echo "$out"; echo "release took $1"; exit 1; fi
+            echo "$out"
+            [ "$out" = "$2" ]
+            [ ! -e "dist/99.1.$n" ]
+            git reset -q --hard HEAD~1
+          }
+          for path in stack/-x.sh -stack/x.sh -stack/01-x.sh stack/.x.sh stack/../stack/values.sh 'stack/a b.sh'; do
+            mkdir -p -- "$(dirname -- "$path")"
+            [ -e "$path" ] || echo ': # a file' > "$path"
+            echo "$path" >> ubuntu-26.04/steps
+            commit
+            refused "$path" "$path is no path the helper takes: each part [A-Za-z0-9_][A-Za-z0-9._-]*"
+          done
+          echo ': # a file' > stack/_x.y-z.sh
+          echo stack/_x.y-z.sh >> ubuntu-26.04/steps
+          commit
+          bin/release.sh "99.1.$n" 0.1.0 example
+          grep -q ' stack/_x.y-z.sh$' "dist/99.1.$n/recipes-99.1.$n-example-ubuntu-26.04.manifest"
+          git reset -q --hard HEAD~1
+          for file in ubuntu-26.04/steps markers; do
+            printf '# a\0b\n' >> "$file"
+            commit
+            refused "a NUL in $file" "$file in v99.1.$n holds a NUL"
+          done
 
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
       # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted
@@ -168,6 +217,25 @@ jobs:
             bash <(bin/render.sh --check stack/06-fail2ban.sh)
             systemctl is-active fail2ban'
 
+      # The checks of steps 6 and 9 fail on their new lines: another SSH port in the jail, another
+      # user in the log path or the su line. Then each step writes its file again and its check
+      # passes.
+      - name: checks of 6 and 9, the values
+        run: |
+          docker exec twice bash -euc '
+            fails() {
+              bin/render.sh --step $1 > /tmp/step
+              bin/render.sh --check $1 > /tmp/check
+              sed -i "$3" $2
+              if bash /tmp/check > /tmp/out 2>&1; then echo "$1: check passed after $3"; exit 1; fi
+              grep -qF "$4" /tmp/out || { cat /tmp/out; echo "$1: another line failed after $3"; exit 1; }
+              bash /tmp/step
+              bash /tmp/check
+            }
+            fails stack/06-fail2ban.sh /etc/fail2ban/jail.d/eeploi.conf "s/^port = .*/port = 10023/" "port = \$SSH_PORT"
+            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s|^/home/deploy/|/home/other/|" "/home/\$DEPLOY_USER"
+            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s/^    su .*/    su root root/" "su \$DEPLOY_USER"'
+
       # Step 0 runs only at a first boot, so it is named here. Then its check passes with a comment
       # added, and fails on a key more, a key less, a key twice, another port, root as the user, and
       # another mode of the file or its directory.
@@ -187,6 +255,23 @@ jobs:
             chmod 775 /etc/eeploi; fails "a directory others may change"
             chmod 600 /etc/eeploi/recipes.conf; fails "another mode"
             bash /tmp/check'
+
+      # Every check runs on its own and leaves /etc, fail2ban and nginx as they were, passing or
+      # not. Then a check with a line more that writes to /etc, or that restarts nginx, fails it.
+      - name: checks, read-only
+        run: |
+          docker exec twice bash -euc '
+            bin/checks-read-only.sh
+            cp -a /recipes /tmp/readonly
+            cd /tmp/readonly
+            for line in "touch /etc/written" "systemctl restart nginx"; do
+              cp /recipes/stack/09-logs.check.sh stack/
+              echo "$line" >> stack/09-logs.check.sh
+              if out=$(bin/checks-read-only.sh stack/09-logs.sh); then echo "$out"; echo "a check with $line passed"; exit 1; fi
+              echo "$out"
+              grep -qxF "stack/09-logs.check.sh: changed the server" <<< "$out"
+              rm -f /etc/written
+            done'
 
       # The fingerprint prints only known facts, in the container and on the runner, a real VM,
       # and leaves /etc as it was.
