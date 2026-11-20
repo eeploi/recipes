@@ -40,14 +40,13 @@ for file in "$tmp"/tree/ubuntu-*/steps "$tmp/tree/markers"; do
   # shellcheck disable=SC2094 # both only read it
   tr -d '\000' < "$file" | cmp -s - "$file" || { echo "${file#"$tmp/tree/"} in $tag holds a NUL" >&2; exit 1; }
 done
+path_ok() { [[ "$1" =~ $path_name ]] || { echo "$1 is no path the helper takes: each part $part" >&2; exit 1; }; }
 for list in "$tmp"/tree/ubuntu-*/steps; do
+  path_ok "$(basename "$(dirname "$list")")/php-source.sh"
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
-    echo "$file"
+    path_ok "$file"
   done < "$list"
-  echo "$(basename "$(dirname "$list")")/php-source.sh"
-done | while IFS= read -r path; do
-  [[ "$path" =~ $path_name ]] || { echo "$path is no path the helper takes: each part $part" >&2; exit 1; }
 done
 "$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
 
