@@ -66,7 +66,8 @@ jobs:
 
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
       # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted
-      # read-only, so modprobe reads a real kernel's. Then 07's check must fail without its apt
+      # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
+      # the services still run after all of them. Then 07's check must fail without its apt
       # lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
@@ -82,8 +83,24 @@ jobs:
           docker exec twice bash -euc '
             systemctl is-active fail2ban nginx
             bin/run-twice.sh
+            systemctl is-active fail2ban nginx
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash <(bin/render.sh --check stack/07-updates.sh)'
+
+      # A step that leaves a unit failed fails bin/run-twice.sh: step 9, in a copy of the repo,
+      # with a line more that breaks nginx. Then nginx runs again.
+      - name: twice, a step that fails a unit
+        run: |
+          docker exec twice bash -euc '
+            cp -a /recipes /tmp/recipes
+            cd /tmp/recipes
+            echo "echo broken > /etc/nginx/conf.d/broken.conf; systemctl restart nginx || true" >> stack/09-logs.sh
+            if out=$(bin/run-twice.sh stack/09-logs.sh); then echo "$out"; echo "run-twice passed with nginx failed"; exit 1; fi
+            echo "$out"
+            grep -qx "stack/09-logs.sh: left failed: nginx.service" <<< "$out"
+            rm /etc/nginx/conf.d/broken.conf
+            systemctl reset-failed nginx
+            systemctl start nginx'
 
       # Step 6 with another jail file broken: the step fails and leaves eeploi's jail as it was,
       # changed or not there. Then, with that file gone, the step and its check pass again.
