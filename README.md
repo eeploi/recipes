@@ -11,7 +11,7 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 | `stack/` | The steps every Ubuntu release shares: apt retries, the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start |
 | `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the packages (`01-packages.sh`) and the source for another PHP version than Ubuntu's (`php-source.sh`) |
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
-| `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), and the release build |
+| `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test of the report to eeploi (CI), and the release build |
 
 ## Steps
 
@@ -35,11 +35,11 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 8 | `stack/08-nginx.sh` | Real visitor IPs, a catch-all for unknown hosts |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |
 | 10 | `stack/10-start.sh` | Starts the services, checks SSH listens on IPv4 |
-| 11 | `first-boot/11-report.sh` | Sends the host keys to eeploi |
+| 11 | `first-boot/11-report.sh` | Sends the host keys to eeploi, every 30 seconds until eeploi takes or refuses them |
 
 `php-source.sh` adds the ondrej PPA as a fixed source, with its key (14AA40EC0831756756D7F66C4F4EA0AAE5267A6C) pinned, so a first boot needs no Launchpad API.
 
-`stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the failure report and the values. Nor is `stack/fingerprint.sh` (Fingerprint), which is not part of a server's script.
+`stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the reports to eeploi and the values. Nor is `stack/fingerprint.sh` (Fingerprint), which is not part of a server's script.
 
 ## Markers
 
@@ -61,7 +61,7 @@ Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check th
 
 ## CI
 
-One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. Then `bin/run-twice.sh` runs each `always` step twice in a fresh `ubuntu:26.04` container, then its check, and fails a step whose second run changes `/etc`. Then the check of step 7 must fail without its apt lines, step 0 writes the values file twice and its check must fail on a changed file, and the fingerprint must print only known facts, in the container and on the runner. Last, `bin/release.sh` builds a release from a local tag, and every file in its package must match its manifest.
+One job on every pull request and push to `main`: `bash -n` on every `.sh`, `bin/check-layout.sh` (every file in `steps` exists, and each step sets `STEP=`, has its check, has one marker in `markers` and is in the table above), and shellcheck on the script `bin/render.sh` makes from `steps`, with and without `first-boot/`, and on the checks with the values in front. The step files are fragments, so shellcheck can't read them one by one. `first-boot/00-helper-download.sh` and `first-boot/11-report.sh` have no check, by name in `bin/check-layout.sh`. `bin/test-report.sh` runs the report to eeploi against a fake eeploi, with the cases in its header. Then `bin/run-twice.sh` runs each `always` step twice in a fresh `ubuntu:26.04` container, then its check, and fails a step whose second run changes `/etc`. Then the check of step 7 must fail without its apt lines, step 0 writes the values file twice and its check must fail on a changed file, and the fingerprint must print only known facts, in the container and on the runner. Last, `bin/release.sh` builds a release from a local tag, and every file in its package must match its manifest.
 
 ## Values
 

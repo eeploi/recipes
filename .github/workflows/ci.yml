@@ -45,6 +45,11 @@ jobs:
       - name: shellcheck, bin/ and the fingerprint
         run: shellcheck bin/*.sh stack/fingerprint.sh
 
+      # The first boot's report to eeploi, against a fake eeploi with a short cap: taken, refused,
+      # kept trying while eeploi is down or can't be reached, and never the token in the output.
+      - name: report, against a fake eeploi
+        run: bin/test-report.sh
+
       # A release from a tag made here only: every file in the package matches its manifest, the
       # package holds nothing else, and the steps are those of the list, in its order.
       - name: release, from a local tag
