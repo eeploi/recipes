@@ -64,6 +64,21 @@ jobs:
           diff <(tar -tzf dist/99.0.0/recipes-99.0.0.tar.gz | grep -v '/$' | LC_ALL=C sort) <(awk '{ print $2 }' "$RUNNER_TEMP/sums" | LC_ALL=C sort)
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
 
+      # A provider the helper would refuse fails the release before anything is built; the
+      # longest name the helper takes, 32 characters, builds.
+      - name: release, provider names
+        run: |
+          git tag v99.0.2
+          long=$(printf '%032d' 0)
+          for provider in Example -example example- "${long}0" example_1; do
+            if out=$(bin/release.sh 99.0.2 0.1.0 example "$provider" 2>&1); then echo "$out"; echo "release took $provider"; exit 1; fi
+            echo "$out"
+            grep -qxF -e "$provider is no provider name" <<< "$out"
+            [ ! -e dist/99.0.2 ]
+          done
+          bin/release.sh 99.0.2 0.1.0 "$long"
+          [ -f "dist/99.0.2/recipes-99.0.2-$long-ubuntu-26.04.manifest" ]
+
       # In a copy of the tree: an always step with a value the helper does not fill fails the
       # layout, and does not render to run on its own. A step that is a link fails the layout, and
       # a link to php-source.sh, which the layout doesn't read, fails the release.
