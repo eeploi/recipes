@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds a release from its tag, not from the working copy: the package (the files a server runs,
 # as a tar.gz) and a manifest per provider and Ubuntu release, in dist/VERSION/. Signs nothing: it
-# prints the manifests to sign with the recipes key (RECIPES_KEY, ~/.minisign/eeploi-recipes.key by default).
+# prints the manifests to sign with the recipes key (RECIPES_KEY sets another key file).
 # Usage: bin/release.sh VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.0 0.5.0 example
 set -euo pipefail
 cd "$(dirname "$0")/.."
