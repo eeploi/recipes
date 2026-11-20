@@ -110,4 +110,4 @@ echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
 ls -1 "$out"
 echo
 echo 'Sign each manifest with the recipes key, then add the package, the manifests and their .minisig files to the GitHub release:'
-for manifest in "$out"/*.manifest; do echo "  minisign -S -s $key -m $manifest"; done
+for manifest in "$out"/*.manifest; do printf '  minisign -S -s %q -m %q\n' "$key" "$manifest"; done
