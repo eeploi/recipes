@@ -4,3 +4,5 @@ fail2ban-client -t >/dev/null
 [ ! -e /etc/fail2ban/jail.d/eeploi.conf.prev ]
 # A running fail2ban has loaded eeploi's jail: its bantime, not the default 10 minutes.
 if systemctl is-active --quiet fail2ban; then [ "$(fail2ban-client get sshd bantime)" = 3600 ]; fi
+# The jail watches this server's SSH port.
+grep -qxF "port = $SSH_PORT" /etc/fail2ban/jail.d/eeploi.conf

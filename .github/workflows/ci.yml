@@ -218,6 +218,23 @@ jobs:
             bash <(bin/render.sh --check stack/06-fail2ban.sh)
             systemctl is-active fail2ban'
 
+      # The checks of steps 6 and 9 fail on another SSH port in the jail, and on another user in
+      # the log path or the su line. Then each step writes its file again and its check passes.
+      - name: checks of 6 and 9, the values
+        run: |
+          docker exec twice bash -euc '
+            fails() {
+              bin/render.sh --step $1 > /tmp/step
+              bin/render.sh --check $1 > /tmp/check
+              sed -i "$3" $2
+              if bash /tmp/check > /dev/null 2>&1; then echo "$1: check passed after $3"; exit 1; fi
+              bash /tmp/step
+              bash /tmp/check
+            }
+            fails stack/06-fail2ban.sh /etc/fail2ban/jail.d/eeploi.conf "s/^port = .*/port = 10023/"
+            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s|^/home/deploy/|/home/other/|"
+            fails stack/09-logs.sh /etc/logrotate.d/eeploi "s/^    su .*/    su other other/"'
+
       # Step 0 runs only at a first boot, so it is named here. Then its check passes with a comment
       # added, and fails on a key more, a key less, a key twice, another port, root as the user, and
       # another mode of the file or its directory.
