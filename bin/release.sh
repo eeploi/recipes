@@ -16,7 +16,7 @@ semver='^[0-9]+\.[0-9]+\.[0-9]+$'
 [[ "$min_helper" =~ $semver ]] || { echo "$min_helper is no helper version, such as 0.5.0" >&2; exit 2; }
 provider_name='^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$'   # the helper's rule (recipe-run)
 for provider; do
-  [[ "$provider" =~ $provider_name ]] || { echo "$provider is no provider name" >&2; exit 2; }
+  [[ "$provider" =~ $provider_name ]] || { echo "$provider is no provider name: a-z, 0-9 and inner -, at most 32" >&2; exit 2; }
 done
 tag=v$version
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag is no tag" >&2; exit 1; }
