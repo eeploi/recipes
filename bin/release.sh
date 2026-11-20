@@ -41,13 +41,13 @@ for file in "$tmp"/tree/ubuntu-*/steps "$tmp/tree/markers"; do
   tr -d '\000' < "$file" | cmp -s - "$file" || { echo "${file#"$tmp/tree/"} in $tag holds a NUL" >&2; exit 1; }
 done
 for list in "$tmp"/tree/ubuntu-*/steps; do
-  os=$(basename "$(dirname "$list")")
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
-    for path in "$file" "$os/php-source.sh"; do
-      [[ "$path" =~ $path_name ]] || { echo "$path is no path the helper takes: each part $part" >&2; exit 1; }
-    done
+    echo "$file"
   done < "$list"
+  echo "$(basename "$(dirname "$list")")/php-source.sh"
+done | while IFS= read -r path; do
+  [[ "$path" =~ $path_name ]] || { echo "$path is no path the helper takes: each part $part" >&2; exit 1; }
 done
 "$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
 
