@@ -127,7 +127,7 @@ jobs:
             echo "echo broken > /etc/nginx/conf.d/broken.conf; systemctl restart nginx || true" >> stack/09-logs.sh
             if out=$(bin/run-twice.sh stack/09-logs.sh); then echo "$out"; echo "run-twice passed with nginx failed"; exit 1; fi
             echo "$out"
-            grep -qx "stack/09-logs.sh: left failed: nginx.service" <<< "$out"
+            grep -qE "^stack/09-logs.sh: left failed: (.* )?nginx.service( |$)" <<< "$out"
             rm /etc/nginx/conf.d/broken.conf
             systemctl reset-failed nginx
             systemctl start nginx'

@@ -1,9 +1,9 @@
 # 6. fail2ban for SSH on the custom port
 STEP='6. fail2ban for SSH on the custom port'
 jail=/etc/fail2ban/jail.d/eeploi.conf
-# The old jail stays aside until fail2ban accepts the new one, and comes back if it doesn't.
-rm -f "$jail.prev"
-[ ! -f "$jail" ] || cp -a "$jail" "$jail.prev"
+# The old jail stays aside until fail2ban accepts the new one, and comes back if it doesn't. One
+# left aside by a run that was cut off is that old jail, so it stays.
+[ -f "$jail.prev" ] || [ ! -f "$jail" ] || cp -a "$jail" "$jail.prev"
 cat > "$jail" <<JAIL
 [sshd]
 enabled = true

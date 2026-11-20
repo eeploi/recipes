@@ -95,9 +95,12 @@ done
 # Only plain files: the package would hold a link where the manifest has its target's SHA-256.
 sorted=()
 while IFS= read -r path; do sorted+=("$path"); done < <(printf '%s\n' "${paths[@]}" | LC_ALL=C sort -u)
+listed=0
 while read -r mode _ _ path; do
   case "$mode" in 100644 | 100755) ;; *) echo "$path in $tag is no plain file (mode $mode)" >&2; exit 1 ;; esac
-done < <(git ls-tree -r "$tag" -- "${sorted[@]}")
+  listed=$((listed + 1))
+done < <(git --literal-pathspecs ls-tree -r "$tag" -- "${sorted[@]}")
+[ "$listed" -eq "${#sorted[@]}" ] || { echo "git ls-tree lists $listed of ${#sorted[@]} files in $tag" >&2; exit 1; }
 git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted[@]}"
 
 mkdir -p dist
