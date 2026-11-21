@@ -16,6 +16,8 @@ env:
   HELPER_PUBKEY: RWSoGWKrJHDJoknVaEcX3dz5ew9zWZPqae2Qn2d3M+SGxNBT99NZGiLA
 
 jobs:
+  # The files and the release build: bash -n, the layout, shellcheck, the report to eeploi, the
+  # release and its signatures, then each always step twice and each check in a fresh Ubuntu 26.04.
   check:
     runs-on: ubuntu-24.04
     steps:
@@ -27,6 +29,11 @@ jobs:
       - name: bash -n on every .sh
         run: git ls-files '*.sh' | xargs -n1 bash -n
 
+      # bin/check-layout.sh: every file in ubuntu-*/steps has a path the helper takes (each part
+      # [A-Za-z0-9_][A-Za-z0-9._-]*), exists and is no link; each step sets STEP=, has its check
+      # (but the two in NO_CHECK, first-boot/00-helper-download.sh and first-boot/11-report.sh),
+      # one marker in markers and a row in the README's step table; an always step holds no other
+      # value than {user}, {port}, {php}, {version} and {name}.
       - name: Layout
         run: bin/check-layout.sh
 
@@ -241,7 +248,9 @@ jobs:
           done
 
       # Each always step in markers runs twice in a fresh Ubuntu 26.04 with systemd running, so a
-      # step reloads a running service as on a live server, then its check. The host's kernel modules are mounted
+      # step reloads a running service as on a live server, then its check (bin/run-twice.sh), with
+      # only the values the helper fills and as the helper runs it: from /, with its PATH and a
+      # clean environment. A step whose second run changes /etc fails. The host's kernel modules are mounted
       # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
       # the services still run after all of them. Then 07's check must fail without its apt
       # lines: every line of a check counts, not only the last.
@@ -339,8 +348,9 @@ jobs:
             chmod 600 /etc/eeploi/recipes.conf; fails "another mode"
             bash /tmp/check'
 
-      # Every check runs on its own and leaves /etc, fail2ban and nginx as they were, passing or
-      # not. Then a check with a line more that writes to /etc, or that restarts nginx, fails it.
+      # Every check runs on its own, as the helper runs it, and leaves /etc, fail2ban and nginx as
+      # they were, passing or not (bin/checks-read-only.sh). A failing check stops at its failing
+      # line, so the lines after it are not tested here. Then a check with a line more that writes to /etc, or that restarts nginx, fails it.
       - name: checks, read-only
         run: |
           docker exec twice bash -euc '
