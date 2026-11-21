@@ -28,7 +28,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 1 | `ubuntu-26.04/01-packages.sh` | nginx, PHP, Node, Redis, Supervisor, the database, Composer and a pinned npm, without Ubuntu's `globalignorefile` and its update notice |
 | 2 | `stack/02-deploy-user.sh` | The deploy user, with eeploi's key only; cron and at for root and that user only |
 | 3 | `stack/03-sudo.sh` | eeploi-helper and its one sudo rule |
-| 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login |
+| 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login, three tries, no forwarding but local (`ssh -L`), Diffie-Hellman groups of 3072 bits and up |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
 | 6 | `stack/06-fail2ban.sh` | fail2ban for SSH, taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, services restarted after one, SCTP kernel module blocked |
@@ -79,6 +79,8 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   The helper is the release CI pins, with only its recipes key and its release address changed for a test key and a local server.
   `recipe-run` on a release built in CI ends `result ok` twice, the second time with every step the same, and fails when a check fails.
   npm, as the deploy user runs it, prints no warning and no update notice.
+  The settings SSH runs with, after every drop-in, are step 4's.
+  ssh-audit reports on SSH's crypto, a report only.
   Last, Lynis audits that server: its hardening index, warnings and suggestions go to the job summary and the report is kept, a report only, never a failure.
 
 A CI change updates the comments in `ci.yml`. This section changes only when what a job guarantees changes.
