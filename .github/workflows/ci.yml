@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # the release tags, for bin/release.sh
+          fetch-depth: 0 # the release tags, for bin/build-release.sh
 
       - name: bash -n on every .sh
         run: git ls-files '*.sh' | xargs -n1 bash -n
@@ -55,7 +55,7 @@ jobs:
       - name: release, from a local tag
         run: |
           git tag v99.0.0
-          bin/release.sh 99.0.0 0.1.0 example
+          bin/build-release.sh 99.0.0 0.1.0 example
           manifest=dist/99.0.0/recipes-99.0.0-example-ubuntu-26.04.manifest
           mkdir "$RUNNER_TEMP/package"
           tar -xzf dist/99.0.0/recipes-99.0.0.tar.gz -C "$RUNNER_TEMP/package"
@@ -66,8 +66,8 @@ jobs:
 
       # The release above, signed with a throwaway key: it verifies against that key, and fails
       # against the recipes key in minisign.pub, with a manifest signed by another key, a changed
-      # manifest signed again, a stale or missing .minisig, a legacy signature, a changed package and
-      # a file not built.
+      # manifest signed again, a stale or missing .minisig, a legacy signature (by the prefix check and by
+      # minisign -V -H alone), a changed package and a file not built.
       - name: release, verify the signatures
         run: |
           sudo apt-get install -yq minisign > /dev/null 2>&1 || { sudo apt-get update -q > /dev/null; sudo apt-get install -yq minisign > /dev/null; }
@@ -78,7 +78,7 @@ jobs:
           d=dist/99.0.0
           m=$d/recipes-99.0.0-example-ubuntu-26.04.manifest
           minisign -S -s "$k/test.key" -m "$m" > /dev/null
-          verify() { RECIPES_PUB=${RECIPES_PUB:-$k/test.pub} bin/release.sh --verify 99.0.0 0.1.0 example 2>&1; }
+          verify() { RECIPES_PUB=${RECIPES_PUB:-$k/test.pub} bin/build-release.sh --verify 99.0.0 0.1.0 example 2>&1; }
           refused() {
             if out=$(verify); then echo "$out"; echo "verify took $1"; exit 1; fi
             echo "$out"
@@ -97,6 +97,9 @@ jobs:
           refused 'a stale .minisig' "$m.minisig does not verify the manifest v99.0.0 builds against $k/test.pub"
           minisign -S -l -s "$k/test.key" -m "$m" > /dev/null
           refused 'a legacy signature' "$m.minisig is no prehashed signature (ED): sign without -l"
+          # minisign -V -H on its own refuses the legacy signature too, which minisign -V takes.
+          minisign -V -q -p "$k/test.pub" -m "$m" -x "$m.minisig"
+          if minisign -V -H -q -p "$k/test.pub" -m "$m" -x "$m.minisig"; then echo 'minisign -V -H took a legacy signature'; exit 1; fi
           rm "$m.minisig"
           refused 'no .minisig' "missing: ${m##*/}.minisig"
           cp "$k/${m##*/}.minisig" "$m.minisig"
@@ -125,12 +128,12 @@ jobs:
           git tag v99.0.2
           long=example-$(printf '%024d' 0)
           for provider in Example -example example- "${long}0" example_1; do
-            if out=$(bin/release.sh 99.0.2 0.1.0 example "$provider" 2>&1); then echo "$out"; echo "release took $provider"; exit 1; fi
+            if out=$(bin/build-release.sh 99.0.2 0.1.0 example "$provider" 2>&1); then echo "$out"; echo "release took $provider"; exit 1; fi
             echo "$out"
             [ "$out" = "$provider is no provider name: a-z, 0-9 and inner -, at most 32" ]
             [ ! -e dist/99.0.2 ]
           done
-          bin/release.sh 99.0.2 0.1.0 a "$long"
+          bin/build-release.sh 99.0.2 0.1.0 a "$long"
           for provider in a "$long"; do [ -f "dist/99.0.2/recipes-99.0.2-$provider-ubuntu-26.04.manifest" ]; done
 
       # In a copy of the tree: an always step with a value the helper does not fill fails the
@@ -167,7 +170,7 @@ jobs:
           git -c user.name=CI -c user.email=ci@example.invalid commit -qm 'A link'
           bin/check-layout.sh
           git tag v99.0.1
-          if out=$(bin/release.sh 99.0.1 0.1.0 example 2>&1); then echo "$out"; echo 'release took a link'; exit 1; fi
+          if out=$(bin/build-release.sh 99.0.1 0.1.0 example 2>&1); then echo "$out"; echo 'release took a link'; exit 1; fi
           echo "$out"
           grep -qxF 'ubuntu-26.04/php-source.sh in v99.0.1 is no plain file (mode 120000)' <<< "$out"
 
@@ -187,7 +190,7 @@ jobs:
             git tag "v99.1.$n"
           }
           refused() {
-            if out=$(bin/release.sh "99.1.$n" 0.1.0 example 2>&1); then echo "$out"; echo "release took $1"; exit 1; fi
+            if out=$(bin/build-release.sh "99.1.$n" 0.1.0 example 2>&1); then echo "$out"; echo "release took $1"; exit 1; fi
             echo "$out"
             [ "$out" = "$2" ]
             [ ! -e "dist/99.1.$n" ]
@@ -203,7 +206,7 @@ jobs:
           echo ': # a file' > stack/_x.y-z.sh
           echo stack/_x.y-z.sh >> ubuntu-26.04/steps
           commit
-          bin/release.sh "99.1.$n" 0.1.0 example
+          bin/build-release.sh "99.1.$n" 0.1.0 example
           grep -q ' stack/_x.y-z.sh$' "dist/99.1.$n/recipes-99.1.$n-example-ubuntu-26.04.manifest"
           git reset -q --hard HEAD~1
           for file in ubuntu-26.04/steps markers; do
