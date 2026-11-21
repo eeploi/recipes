@@ -476,8 +476,12 @@ jobs:
             chmod +x /usr/local/bin/composer'
 
       # For #28 d: what npm reads as its builtin config, and what it prints to the deploy user.
+      # Temporary, with what logrotate says about eeploi's file under the helper's environment.
       - name: server, npm
+        if: always()
         run: |
+          docker exec server env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LC_ALL=C logrotate -d /etc/logrotate.d/eeploi 2>&1 | tail -n 20 || true
+          docker exec server ls -la /home/deploy || true
           docker exec server bash -uc '
             for f in /usr/local/lib/node_modules/npm/npmrc /usr/share/nodejs/npm/npmrc /usr/lib/node_modules/npm/npmrc /etc/npmrc /usr/local/etc/npmrc; do
               echo "== $f"; cat "$f" 2>&1
