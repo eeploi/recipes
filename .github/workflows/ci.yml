@@ -84,7 +84,8 @@ jobs:
             grep -qxF "$2" <<< "$out"
           }
           verify
-          RECIPES_PUB=minisign.pub refused 'the test key for the recipes key' "but the key id in the public key is $(sed -n '1s/.* //p' minisign.pub)"
+          RECIPES_PUB=minisign.pub refused 'the test key for the recipes key' "$m.minisig does not verify the manifest v99.0.0 builds against minisign.pub"
+          if out=$(verify); then grep -qxF 'NOT the recipes key in minisign.pub: RECIPES_PUB is set' <<< "$out"; else echo "$out"; exit 1; fi
           cp "$m" "$m.minisig" "$k/"
           minisign -S -s "$k/other.key" -m "$m" > /dev/null
           refused 'another key' "$m.minisig does not verify the manifest v99.0.0 builds against $k/test.pub"

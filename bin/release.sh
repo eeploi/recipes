@@ -39,6 +39,7 @@ else
 fi
 
 # Built in $tmp/out and moved to $out at the end, so a run that fails leaves nothing half built.
+# With --verify it is only compared with $out.
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 build=$tmp/out
@@ -156,6 +157,7 @@ if [ -n "$verify" ]; then
     minisign -V -q -p "$pub" -m "$f" -x "$sig" || { echo "$sig does not verify the manifest $tag builds against $pub" >&2; exit 1; }
   done
   echo "Verified $tag ($(git rev-parse "$tag^{commit}")) in $out against $pub:"
+  [ "$pub" = minisign.pub ] || echo "NOT the recipes key in minisign.pub: RECIPES_PUB is set" >&2
 else
   mkdir -p dist
   mv "$build" "$out"
