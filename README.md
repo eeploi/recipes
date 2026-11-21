@@ -28,7 +28,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 1 | `ubuntu-26.04/01-packages.sh` | nginx, PHP, Node, Redis, Supervisor, the database, Composer and a pinned npm, without Ubuntu's `globalignorefile` and its update notice |
 | 2 | `stack/02-deploy-user.sh` | The deploy user, with eeploi's key only; cron and at for root and that user only |
 | 3 | `stack/03-sudo.sh` | eeploi-helper and its one sudo rule |
-| 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login, three tries, no forwarding but local (`ssh -L`), Diffie-Hellman groups of 3072 bits and up |
+| 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login, three tries, no forwarding but local (`ssh -L`, TCP and Unix sockets), Diffie-Hellman groups of 3072 bits and up (in `/etc/ssh/eeploi-moduli`) |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
 | 6 | `stack/06-fail2ban.sh` | fail2ban for SSH, taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, services restarted after one, SCTP kernel module blocked |

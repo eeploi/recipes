@@ -3,6 +3,13 @@
 #    with password login can't win. An old eeploi.conf goes.
 STEP='4. SSH'
 rm -f /etc/ssh/sshd_config.d/eeploi.conf
+# Diffie-Hellman groups of 3072 bits and up only (the moduli file counts 3071), in a file of our
+# own: /etc/ssh/moduli is the package's, and a changed one would hold back its security updates.
+SSH_MODULI_TMP=$(mktemp /etc/ssh/.eeploi-moduli.XXXXXX)
+awk '$1 ~ /^#/ { print; next } $5 >= 3071 { print; n++ } END { exit !n }' /etc/ssh/moduli > "$SSH_MODULI_TMP" \
+  || { rm -f "$SSH_MODULI_TMP"; echo 'no moduli of 3072 bits and up in /etc/ssh/moduli, SSH is as it was' >&2; exit 1; }
+chmod 644 "$SSH_MODULI_TMP"
+mv -f "$SSH_MODULI_TMP" /etc/ssh/eeploi-moduli
 cat > /etc/ssh/sshd_config.d/00-eeploi.conf <<SSHD
 Port $SSH_PORT
 PermitRootLogin no
@@ -16,14 +23,10 @@ MaxStartups 10:30:60
 X11Forwarding no
 AllowAgentForwarding no
 AllowTcpForwarding local
+AllowStreamLocalForwarding local
 PermitTunnel no
+ModuliFile /etc/ssh/eeploi-moduli
 SSHD
-# Diffie-Hellman groups of 3072 bits and up only (the moduli file counts 3071).
-SSH_MODULI_TMP=$(mktemp /etc/ssh/.moduli.XXXXXX)
-awk '$1 ~ /^#/ || $5 >= 3071' /etc/ssh/moduli > "$SSH_MODULI_TMP"
-awk '$1 !~ /^#/ { n++ } END { exit !n }' "$SSH_MODULI_TMP" || { rm -f "$SSH_MODULI_TMP"; echo 'no moduli of 3072 bits and up, /etc/ssh/moduli is as it was' >&2; exit 1; }
-chmod 644 "$SSH_MODULI_TMP"
-mv -f "$SSH_MODULI_TMP" /etc/ssh/moduli
 sshd -t
 # Ubuntu's sshd-socket-generator writes ssh.socket's addresses from the Port above, on IPv4 and
 # IPv6. Without it, both addresses are written here: a bare port binds IPv6 only, since
