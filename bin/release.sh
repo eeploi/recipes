@@ -2,13 +2,19 @@
 # Builds a release from its tag, not from the working copy: the package (the files a server runs,
 # as a tar.gz) and a manifest per provider and Ubuntu release, in dist/VERSION/. Signs nothing: it
 # prints the manifests to sign with the recipes key (RECIPES_KEY sets another key file).
-# Usage: bin/release.sh VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.0 0.5.0 example
+# With --verify it builds the same release again and changes nothing: dist/VERSION/ must hold
+# exactly those files, the same bytes, and a .minisig per manifest that verifies the bytes built
+# against minisign.pub, the recipes public key (RECIPES_PUB sets another, for tests).
+# Usage: bin/release.sh [--verify] VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.0 0.5.0 example
 set -euo pipefail
 export LC_ALL=C # the name rules below match ASCII only, as the helper's
 cd "$(dirname "$0")/.."
 key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
+pub=${RECIPES_PUB:-minisign.pub}
+verify=
+[ "${1:-}" != --verify ] || { verify=1; shift; }
 
-[ "$#" -ge 3 ] || { echo "Usage: bin/release.sh VERSION MIN_HELPER PROVIDER..." >&2; exit 2; }
+[ "$#" -ge 3 ] || { echo "Usage: bin/release.sh [--verify] VERSION MIN_HELPER PROVIDER..." >&2; exit 2; }
 version=$1
 min_helper=$2
 shift 2
@@ -24,7 +30,13 @@ done
 tag=v$version
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag is no tag" >&2; exit 1; }
 out=dist/$version
-[ ! -e "$out" ] || { echo "$out exists" >&2; exit 1; }
+if [ -n "$verify" ]; then
+  command -v minisign >/dev/null || { echo "minisign is not installed" >&2; exit 1; }
+  [ -f "$pub" ] || { echo "no public key at $pub" >&2; exit 1; }
+  [ -d "$out" ] && [ ! -L "$out" ] || { echo "$out is no folder: build it first" >&2; exit 1; }
+else
+  [ ! -e "$out" ] || { echo "$out exists" >&2; exit 1; }
+fi
 
 # Built in $tmp/out and moved to $out at the end, so a run that fails leaves nothing half built.
 tmp=$(mktemp -d)
@@ -124,10 +136,34 @@ done < <(git --literal-pathspecs ls-tree -r "$tag" -- "${sorted[@]}")
 [ "$listed" -eq "${#sorted[@]}" ] || { echo "git ls-tree lists $listed of ${#sorted[@]} files in $tag" >&2; exit 1; }
 git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted[@]}"
 
+# What goes up is what this tag builds, and each signature is the recipes key's over those bytes.
+# minisign refuses a signature whose key id is not the public key's, so a manifest signed with
+# another key fails here, not on every server.
+if [ -n "$verify" ]; then
+  diff <({ for f in "$build"/*; do echo "${f##*/}"; done; for f in "$build"/*.manifest; do echo "${f##*/}.minisig"; done; } | sort) \
+    <(cd "$out" && find . -mindepth 1 -maxdepth 1 | sed 's|^\./||' | sort) | sed -n 's/^< /missing: /p; s/^> /not built: /p' > "$tmp/diff" || true
+  [ ! -s "$tmp/diff" ] || { echo "$out holds other files than $tag builds, with a .minisig per manifest:" >&2; cat "$tmp/diff" >&2; exit 1; }
+  for f in "$build"/*; do
+    name=${f##*/}
+    [ -f "$out/$name" ] && [ ! -L "$out/$name" ] || { echo "$out/$name is no plain file" >&2; exit 1; }
+    cmp -s "$f" "$out/$name" || { echo "$out/$name is not the file $tag builds" >&2; exit 1; }
+  done
+  for f in "$build"/*.manifest; do
+    sig=$out/${f##*/}.minisig
+    [ -f "$sig" ] && [ ! -L "$sig" ] || { echo "$sig is no plain file" >&2; exit 1; }
+    minisign -V -q -p "$pub" -m "$f" -x "$sig" || { echo "$sig does not verify the manifest $tag builds against $pub" >&2; exit 1; }
+  done
+  echo "Verified $tag ($(git rev-parse "$tag^{commit}")) in $out against $pub:"
+  ls -1 "$out"
+  exit 0
+fi
+
 mkdir -p dist
 mv "$build" "$out"
 echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
 ls -1 "$out"
 echo
-echo 'Sign each manifest with the recipes key, then add the package, the manifests and their .minisig files to the GitHub release:'
+echo 'Sign each manifest with the recipes key:'
 for manifest in "$out"/*.manifest; do printf '  minisign -S -s %q -m %q\n' "$key" "$manifest"; done
+echo 'Then verify the release, and add the package, the manifests and their .minisig files to the GitHub release:'
+printf '  bin/release.sh --verify'; printf ' %q' "$version" "$min_helper" "$@"; echo
