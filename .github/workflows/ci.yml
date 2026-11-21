@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# The one Ubuntu 26.04 image both jobs' containers start from, and the one helper release CI reads,
+# with the helper's release key (key id A2C97024AB6219A8), pinned here, not read next to the release.
+env:
+  UBUNTU_IMAGE: ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+  HELPER_TAG: v1.1.0
+  HELPER_PUBKEY: RWSoGWKrJHDJoknVaEcX3dz5ew9zWZPqae2Qn2d3M+SGxNBT99NZGiLA
+
 jobs:
   check:
     runs-on: ubuntu-24.04
@@ -22,6 +29,17 @@ jobs:
 
       - name: Layout
         run: bin/check-layout.sh
+
+      # Only prehashed signatures count, as on every server: each minisign -V in ci.yml and bin/
+      # has -H, but for a line marked "legacy on purpose". Then a line without -H must fail it.
+      - name: minisign -V, prehashed only
+        run: |
+          m=minisign
+          unhashed() { grep -nE "^[^#]*${m}( [^#]*)? -V( |\$)" "$@" | grep -vE "^[^#]*${m}[^#]* -H( |\$)" | grep -v '# legacy on purpose' || true; }
+          bad=$(unhashed .github/workflows/ci.yml bin/*.sh)
+          [ -z "$bad" ] || { echo "$bad"; echo "minisign -V without -H above"; exit 1; }
+          echo "$m -V -q -p key.pub -m file" > "$RUNNER_TEMP/unhashed.sh"
+          [ -n "$(unhashed "$RUNNER_TEMP/unhashed.sh")" ]
 
       # The step files are fragments, so shellcheck runs on the script they make, as eeploi renders
       # it. SC1091: /etc/os-release is not there to follow.
@@ -98,7 +116,7 @@ jobs:
           minisign -S -l -s "$k/test.key" -m "$m" > /dev/null
           refused 'a legacy signature' "$m.minisig is no prehashed signature (ED): sign without -l"
           # minisign -V -H on its own refuses the legacy signature too, which minisign -V takes.
-          minisign -V -q -p "$k/test.pub" -m "$m" -x "$m.minisig"
+          minisign -V -q -p "$k/test.pub" -m "$m" -x "$m.minisig" # legacy on purpose: -V alone takes it
           if minisign -V -H -q -p "$k/test.pub" -m "$m" -x "$m.minisig"; then echo 'minisign -V -H took a legacy signature'; exit 1; fi
           rm "$m.minisig"
           refused 'no .minisig' "missing: ${m##*/}.minisig"
@@ -119,11 +137,11 @@ jobs:
           if out=$(RECIPES_DIR=$k/x bin/build-release.sh 99.0.0 0.1.0 example 2>&1); then echo "$out"; echo 'RECIPES_DIR taken without --verify'; exit 1; fi
           [ "$out" = 'RECIPES_DIR is for --verify only' ]
 
-      # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper, read
-      # from its main until a helper release holds it.
+      # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper
+      # release HELPER_TAG.
       - name: release, the recipes key is the helper's
         run: |
-          helper=$(curl -fsS --retry 3 https://raw.githubusercontent.com/eeploi/helper/main/eeploi-helper)
+          helper=$(curl -fsS --retry 3 "https://raw.githubusercontent.com/eeploi/helper/$HELPER_TAG/eeploi-helper")
           key=$(sed -n "s/^RECIPES_PUBKEY='\(.*\)'\$/\1/p" <<< "$helper")
           [ -n "$key" ] || { echo 'no RECIPES_PUBKEY in the helper'; exit 1; }
           [ "$key" = "$(sed -n 2p minisign.pub)" ] || { echo "minisign.pub is not the helper's RECIPES_PUBKEY ($key)"; exit 1; }
@@ -229,8 +247,9 @@ jobs:
       # lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
-          docker build -t twice - <<'DOCKERFILE'
-          FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+          docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
+          ARG UBUNTU_IMAGE
+          FROM $UBUNTU_IMAGE
           RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
                 fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl && useradd -m deploy
           CMD ["/sbin/init"]
@@ -351,3 +370,150 @@ jobs:
             if grep -vE "$known" "$out"; then echo "unknown facts above in $out"; exit 1; fi
           done
           docker exec twice bin/etc-state.sh | diff "$RUNNER_TEMP/etc.before" -
+
+  # A whole server, as eeploi builds one, then the helper's own recipe-run on a release built here:
+  # every step and check of the release runs as on a live server, with the helper's PATH and clean
+  # environment, and the run must end "result ok", twice. The helper is release HELPER_TAG, with a
+  # test key for the recipes key and a local HTTPS server for GitHub's releases: those two lines only.
+  server:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the release tags, for bin/build-release.sh
+
+      # The helper release HELPER_TAG, its prehashed signature checked against the pinned release key.
+      # Then the test key and the local server in, and nothing else changed.
+      - name: the helper, with a test key
+        run: |
+          sudo apt-get install -yq minisign > /dev/null 2>&1 || { sudo apt-get update -q > /dev/null; sudo apt-get install -yq minisign > /dev/null; }
+          h=$RUNNER_TEMP/helper
+          gh release download "$HELPER_TAG" -R eeploi/helper -p eeploi-helper -p eeploi-helper.minisig -D "$h"
+          minisign -V -H -q -P "$HELPER_PUBKEY" -m "$h/eeploi-helper"
+          grep -qxF "VERSION='${HELPER_TAG#v}'" "$h/eeploi-helper"
+          echo "HELPER_VERSION=${HELPER_TAG#v}" >> "$GITHUB_ENV"
+          k=$RUNNER_TEMP/keys
+          mkdir "$k"
+          minisign -G -W -p "$k/test.pub" -s "$k/test.key" > /dev/null
+          mkdir "$h/ci"
+          sed -e "s#^RECIPES_PUBKEY=.*#RECIPES_PUBKEY='$(sed -n 2p "$k/test.pub")'#" \
+            -e "s#^RECIPES_RELEASES=.*#RECIPES_RELEASES='https://localhost:8443'#" "$h/eeploi-helper" > "$h/ci/eeploi-helper"
+          changed=$(diff "$h/eeploi-helper" "$h/ci/eeploi-helper") || true
+          echo "$changed"
+          [ "$(grep -c '^>' <<< "$changed")" = 2 ]
+
+      # The release from a local tag, with the helper's version as min-helper, its manifest signed
+      # with the test key, in the folders of a GitHub release.
+      - name: release, signed with the test key
+        run: |
+          git tag v99.0.0
+          bin/build-release.sh 99.0.0 "$HELPER_VERSION" example
+          minisign -S -s "$RUNNER_TEMP/keys/test.key" -m dist/99.0.0/recipes-99.0.0-example-ubuntu-26.04.manifest > /dev/null
+          mkdir -p "$RUNNER_TEMP/www"
+          cp -R dist/99.0.0 "$RUNNER_TEMP/www/v99.0.0"
+          ls -l "$RUNNER_TEMP/www/v99.0.0"
+
+      # A fresh Ubuntu 26.04 with what a cloud image brings that the steps use: systemd, SSH, sudo,
+      # logrotate.
+      # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
+      # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
+      # Then the script printed to run by hand, as eeploi renders it, with Ubuntu's own PHP.
+      - name: server, built
+        run: |
+          docker build --build-arg UBUNTU_IMAGE -t server - <<'DOCKERFILE'
+          ARG UBUNTU_IMAGE
+          FROM $UBUNTU_IMAGE
+          RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
+                openssh-server sudo kmod iproute2 logrotate python3 openssl ca-certificates
+          CMD ["/sbin/init"]
+          DOCKERFILE
+          docker run -d --name server --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \
+            -v "$PWD:/recipes:ro" -v "$RUNNER_TEMP/helper/ci:/helper:ro" -v "$RUNNER_TEMP/www:/www:ro" \
+            -v /lib/modules:/lib/modules:ro -w /recipes server
+          timeout 120 bash -c 'until docker exec server systemctl is-system-running 2>/dev/null | grep -qE "^(running|degraded)$"; do sleep 2; done'
+          docker exec server bash -euc '
+            bash first-boot/00-lock-root.sh
+            useradd -m -s /bin/bash deploy
+            passwd -l deploy > /dev/null
+            install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+            echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGNpLXRlc3Qta2V5LW5vdC1yZWFsLWNpLXRlc3Q ci" > /home/deploy/.ssh/authorized_keys
+            chown deploy:deploy /home/deploy/.ssh/authorized_keys
+            chmod 600 /home/deploy/.ssh/authorized_keys
+            install -d -m 755 /etc/eeploi
+            echo DEPLOY_USER=deploy > /etc/eeploi/helper.conf
+            install -m 755 /helper/eeploi-helper /usr/local/sbin/eeploi-helper
+            echo "deploy ALL=(root) NOPASSWD: /usr/local/sbin/eeploi-helper" > /etc/sudoers.d/eeploi
+            chmod 440 /etc/sudoers.d/eeploi
+            visudo -cqf /etc/sudoers.d/eeploi
+            RENDER_PHP=8.5 bin/render.sh --no-first-boot > /root/by-hand.sh
+            bash /root/by-hand.sh'
+
+      # The release served over HTTPS on localhost, with a certificate the server trusts.
+      - name: server, the release on a local HTTPS server
+        run: |
+          docker exec server bash -euc '
+            openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -days 1 -subj /CN=localhost \
+              -addext subjectAltName=DNS:localhost -keyout /root/tls.key -out /usr/local/share/ca-certificates/ci-releases.crt 2> /dev/null
+            update-ca-certificates > /dev/null
+            systemd-run -q --unit=releases python3 -c "
+          import functools, http.server, ssl
+          tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+          tls.load_cert_chain(\"/usr/local/share/ca-certificates/ci-releases.crt\", \"/root/tls.key\")
+          handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=\"/www\")
+          server = http.server.ThreadingHTTPServer((\"127.0.0.1\", 8443), handler)
+          server.socket = tls.wrap_socket(server.socket, server_side=True)
+          server.serve_forever()"
+            timeout 30 bash -c "until curl -fsS -o /dev/null https://localhost:8443/v99.0.0/recipes-99.0.0.tar.gz; do sleep 1; done"'
+
+      # recipe-run through sudo as the deploy user, as eeploi runs it: the first run runs every
+      # always step, the second finds each the same, and both end "result ok". Then a check that
+      # fails makes the run fail: composer not executable.
+      - name: server, recipe-run
+        run: |
+          docker exec server bash -euc '
+            run() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper recipe-run 99.0.0 example 2>&1; }
+            ok() { out=$(run) || { echo "$out"; exit 1; }; echo "$out"; [ "$(tail -n 1 <<< "$out")" = "result ok" ]; }
+            ok
+            grep -q "^step ran " <<< "$out"
+            ok
+            if grep "^step " <<< "$out" | grep -v "^step same "; then echo "a step ran again"; exit 1; fi
+            chmod -x /usr/local/bin/composer
+            if out=$(run); then echo "$out"; echo "recipe-run passed without composer"; exit 1; fi
+            echo "$out"
+            grep -qxF "check failed ubuntu-26.04/01-packages.check.sh" <<< "$out"
+            [ "$(tail -n 1 <<< "$out")" = "result failed" ]
+            chmod +x /usr/local/bin/composer'
+
+      # npm, as the deploy user runs it: the version the script pins, with nothing else printed,
+      # and no update notice.
+      - name: server, npm
+        run: |
+          pin=$(docker exec server grep -o 'npm@[0-9.]*$' /root/by-hand.sh)
+          docker exec server runuser -u deploy -- env -i HOME=/home/deploy PATH=/usr/local/bin:/usr/bin:/bin PIN="$pin" bash -euc '
+            cd
+            out=$(npm --version 2>&1)
+            echo "$out"
+            [ "npm@$out" = "$PIN" ]
+            [ "$(npm config get update-notifier)" = false ]'
+
+      # Step 1's check fails on Ubuntu's globalignorefile back in the pinned npm's builtin config,
+      # on the update notice back on, and on it turned on again after it is off.
+      - name: server, the npm check
+        run: |
+          docker exec server bash -euc '
+            npmrc=/usr/local/lib/node_modules/npm/npmrc
+            RENDER_PHP=8.5 bin/render.sh --check ubuntu-26.04/01-packages.sh > /root/check
+            cp "$npmrc" /root/npmrc
+            echo globalignorefile=/etc/npmignore >> "$npmrc"
+            if bash /root/check; then echo "check passed with globalignorefile"; exit 1; fi
+            cp /root/npmrc "$npmrc"
+            sed -i "/^update-notifier=/d" "$npmrc"
+            if bash /root/check; then echo "check passed with the update notice"; exit 1; fi
+            cp /root/npmrc "$npmrc"
+            echo "update-notifier = true" >> "$npmrc"
+            if bash /root/check; then echo "check passed with the update notice on again"; exit 1; fi
+            cp /root/npmrc "$npmrc"
+            bash /root/check'
