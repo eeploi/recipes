@@ -351,3 +351,133 @@ jobs:
             if grep -vE "$known" "$out"; then echo "unknown facts above in $out"; exit 1; fi
           done
           docker exec twice bin/etc-state.sh | diff "$RUNNER_TEMP/etc.before" -
+
+  # A whole server, as eeploi builds one, then the helper's own recipe-run on a release built here:
+  # every step and check of the release runs as on a live server, with the helper's PATH and clean
+  # environment, and the run must end "result ok", twice. The helper is its latest release, with a
+  # test key for the recipes key and a local HTTPS server for GitHub's releases: those two lines only.
+  server:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the release tags, for bin/build-release.sh
+
+      # The latest helper release, checked against the helper's own key at that tag. Then the test
+      # key and the local server in, and nothing else changed.
+      - name: the helper, with a test key
+        run: |
+          sudo apt-get install -yq minisign > /dev/null 2>&1 || { sudo apt-get update -q > /dev/null; sudo apt-get install -yq minisign > /dev/null; }
+          h=$RUNNER_TEMP/helper
+          tag=$(gh release view -R eeploi/helper --json tagName -q .tagName)
+          echo "helper $tag"
+          gh release download "$tag" -R eeploi/helper -p eeploi-helper -p eeploi-helper.minisig -D "$h"
+          curl -fsS --retry 3 -o "$h/minisign.pub" "https://raw.githubusercontent.com/eeploi/helper/$tag/minisign.pub"
+          minisign -V -q -p "$h/minisign.pub" -m "$h/eeploi-helper"
+          grep -qxF "VERSION='${tag#v}'" "$h/eeploi-helper"
+          echo "${tag#v}" > "$h/version"
+          k=$RUNNER_TEMP/keys
+          mkdir "$k"
+          minisign -G -W -p "$k/test.pub" -s "$k/test.key" > /dev/null
+          mkdir "$h/ci"
+          sed -e "s#^RECIPES_PUBKEY=.*#RECIPES_PUBKEY='$(sed -n 2p "$k/test.pub")'#" \
+            -e "s#^RECIPES_RELEASES=.*#RECIPES_RELEASES='https://localhost:8443'#" "$h/eeploi-helper" > "$h/ci/eeploi-helper"
+          diff "$h/eeploi-helper" "$h/ci/eeploi-helper" || true
+          [ "$(diff "$h/eeploi-helper" "$h/ci/eeploi-helper" | grep -c '^>')" = 2 ]
+
+      # The release from a local tag, with the helper's version as min-helper, its manifest signed
+      # with the test key, in the folders of a GitHub release.
+      - name: release, signed with the test key
+        run: |
+          git tag v99.0.0
+          bin/build-release.sh 99.0.0 "$(cat "$RUNNER_TEMP/helper/version")" example
+          minisign -S -s "$RUNNER_TEMP/keys/test.key" -m dist/99.0.0/recipes-99.0.0-example-ubuntu-26.04.manifest > /dev/null
+          mkdir -p "$RUNNER_TEMP/www"
+          cp -R dist/99.0.0 "$RUNNER_TEMP/www/v99.0.0"
+          ls -l "$RUNNER_TEMP/www/v99.0.0"
+          mkdir "$RUNNER_TEMP/script"
+          bin/render.sh --no-first-boot > "$RUNNER_TEMP/script/by-hand.sh"
+
+      # A fresh Ubuntu 26.04 with what a cloud image brings that the steps use: systemd, SSH, sudo.
+      # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
+      # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
+      # Then the script printed to run by hand, as eeploi renders it.
+      - name: server, built
+        run: |
+          docker build -t server - <<'DOCKERFILE'
+          FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+          RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
+                openssh-server sudo kmod iproute2 python3 openssl ca-certificates
+          CMD ["/sbin/init"]
+          DOCKERFILE
+          docker run -d --name server --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \
+            -v "$PWD:/recipes:ro" -v "$RUNNER_TEMP/helper/ci:/helper:ro" -v "$RUNNER_TEMP/www:/www:ro" \
+            -v "$RUNNER_TEMP/script:/script:ro" -v /lib/modules:/lib/modules:ro -w /recipes server
+          timeout 120 bash -c 'until docker exec server systemctl is-system-running 2>/dev/null | grep -qE "^(running|degraded)$"; do sleep 2; done'
+          docker exec server bash -euc '
+            bash first-boot/00-lock-root.sh
+            useradd -m -s /bin/bash deploy
+            passwd -l deploy > /dev/null
+            install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+            echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGNpLXRlc3Qta2V5LW5vdC1yZWFsLWNpLXRlc3Q ci" > /home/deploy/.ssh/authorized_keys
+            chown deploy:deploy /home/deploy/.ssh/authorized_keys
+            chmod 600 /home/deploy/.ssh/authorized_keys
+            install -d -m 755 /etc/eeploi
+            echo DEPLOY_USER=deploy > /etc/eeploi/helper.conf
+            install -m 755 /helper/eeploi-helper /usr/local/sbin/eeploi-helper
+            echo "deploy ALL=(root) NOPASSWD: /usr/local/sbin/eeploi-helper" > /etc/sudoers.d/eeploi
+            chmod 440 /etc/sudoers.d/eeploi
+            visudo -cqf /etc/sudoers.d/eeploi
+            bash /script/by-hand.sh'
+
+      # The release served over HTTPS on localhost, with a certificate the server trusts.
+      - name: server, the release on a local HTTPS server
+        run: |
+          docker exec server bash -euc '
+            openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -days 1 -subj /CN=localhost \
+              -addext subjectAltName=DNS:localhost -keyout /root/tls.key -out /usr/local/share/ca-certificates/ci-releases.crt 2> /dev/null
+            update-ca-certificates > /dev/null
+            systemd-run -q --unit=releases python3 -c "
+          import functools, http.server, ssl
+          tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+          tls.load_cert_chain(\"/usr/local/share/ca-certificates/ci-releases.crt\", \"/root/tls.key\")
+          handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=\"/www\")
+          server = http.server.ThreadingHTTPServer((\"127.0.0.1\", 8443), handler)
+          server.socket = tls.wrap_socket(server.socket, server_side=True)
+          server.serve_forever()"
+            timeout 30 bash -c "until curl -fsS -o /dev/null https://localhost:8443/v99.0.0/recipes-99.0.0.tar.gz; do sleep 1; done"'
+
+      # recipe-run through sudo as the deploy user, as eeploi runs it: the first run runs every
+      # always step, the second finds each the same, and both end "result ok". Then a check that
+      # fails makes the run fail: composer not executable.
+      - name: server, recipe-run
+        run: |
+          docker exec server bash -euc '
+            run() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper recipe-run 99.0.0 example 2>&1; }
+            out=$(run) || { echo "$out"; exit 1; }
+            echo "$out"
+            [ "$(tail -n 1 <<< "$out")" = "result ok" ]
+            grep -q "^step ran " <<< "$out"
+            out=$(run) || { echo "$out"; exit 1; }
+            echo "$out"
+            [ "$(tail -n 1 <<< "$out")" = "result ok" ]
+            if grep "^step " <<< "$out" | grep -v "^step same "; then echo "a step ran again"; exit 1; fi
+            chmod -x /usr/local/bin/composer
+            if out=$(run); then echo "$out"; echo "recipe-run passed without composer"; exit 1; fi
+            echo "$out"
+            grep -qxF "check failed ubuntu-26.04/01-packages.check.sh" <<< "$out"
+            [ "$(tail -n 1 <<< "$out")" = "result failed" ]
+            chmod +x /usr/local/bin/composer'
+
+      # For #28 d: what npm reads as its builtin config, and what it prints to the deploy user.
+      - name: server, npm
+        run: |
+          docker exec server bash -uc '
+            for f in /usr/local/lib/node_modules/npm/npmrc /usr/share/nodejs/npm/npmrc /usr/lib/node_modules/npm/npmrc /etc/npmrc /usr/local/etc/npmrc; do
+              echo "== $f"; cat "$f" 2>&1
+            done
+            ls -l /usr/local/bin/npm /usr/bin/npm
+            runuser -u deploy -- env -i HOME=/home/deploy PATH=/usr/local/bin:/usr/bin:/bin bash -c "cd; npm --version; npm config ls -l 2>&1 | grep -iE \"globalignore|globalconfig|update-notifier|prefix\""'
