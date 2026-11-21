@@ -66,7 +66,8 @@ jobs:
 
       # The release above, signed with a throwaway key: it verifies against that key, and fails
       # against the recipes key in minisign.pub, with a manifest signed by another key, a changed
-      # manifest signed again, a stale or missing .minisig, a changed package and a file not built.
+      # manifest signed again, a stale or missing .minisig, a legacy signature, a changed package and
+      # a file not built.
       - name: release, verify the signatures
         run: |
           sudo apt-get install -yq minisign > /dev/null 2>&1 || { sudo apt-get update -q > /dev/null; sudo apt-get install -yq minisign > /dev/null; }
@@ -94,6 +95,8 @@ jobs:
           refused 'a changed manifest' "$m is not the file v99.0.0 builds"
           cp "$k/${m##*/}" "$m"
           refused 'a stale .minisig' "$m.minisig does not verify the manifest v99.0.0 builds against $k/test.pub"
+          minisign -S -l -s "$k/test.key" -m "$m" > /dev/null
+          refused 'a legacy signature' "$m.minisig is no prehashed signature (ED): sign without -l"
           rm "$m.minisig"
           refused 'no .minisig' "missing: ${m##*/}.minisig"
           cp "$k/${m##*/}.minisig" "$m.minisig"
