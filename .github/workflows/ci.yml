@@ -540,6 +540,7 @@ jobs:
               "ModuliFile /etc/ssh/moduli" "KexAlgorithms +ecdh-sha2-nistp256" "KexAlgorithms sntrup761x25519-sha512,mlkem768x25519-sha256" \
               "MACs +hmac-sha1-etm@openssh.com" "HostKeyAlgorithms +ecdsa-sha2-nistp256" "HostKey /etc/ssh/ssh_host_ecdsa_key"; do
               echo "$line" > /etc/ssh/sshd_config.d/00-aaa.conf
+              sshd -t
               if bash /root/ssh-check > /dev/null 2>&1; then echo "SSH check passed with $line"; exit 1; fi
             done
             rm /etc/ssh/sshd_config.d/00-aaa.conf
@@ -559,7 +560,7 @@ jobs:
             [ -f /etc/ssh/ssh_host_ecdsa_key ]
             keys=$(ssh-keyscan -p 10022 127.0.0.1 2> /dev/null | cut -d" " -f2 | sort | paste -sd" ")
             echo "$keys"
-            [ "$keys" = "rsa-sha2-512 ssh-ed25519" ] || [ "$keys" = "ssh-ed25519 ssh-rsa" ]
+            [ "$keys" = "ssh-ed25519 ssh-rsa" ]
             ssh -i /root/ci-key -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/known_hosts \
               -p 10022 deploy@127.0.0.1 true
             ssh-keygen -F "[127.0.0.1]:10022" -f /root/known_hosts | grep -q ssh-ed25519'
