@@ -82,11 +82,11 @@ Its check: `/etc/eeploi` is root's and 0755; the user (not root) and the port (2
 
 ## Releases
 
-`bin/release.sh VERSION MIN_HELPER PROVIDER...`, such as `bin/release.sh 0.4.3 1.1.0 hetzner`, is the one release command. Run it in your own terminal: minisign asks for the key password. It first shows the repo and whether `main` is the same as GitHub's, the tag and its commit, the eeploi-helper release `MIN_HELPER` and whether it exists, the targets, the key file and its key id, and the release and its title, `eeploi-recipes VERSION`. Then it runs six steps, `Step N of 6`, and stops on the first failure:
+`bin/release.sh VERSION MIN_HELPER PROVIDER...`, such as `bin/release.sh 0.4.3 1.1.0 example`, is the one release command. Run it in your own terminal: minisign asks for the key password. It first shows the repo and whether `main` is the same as GitHub's, the tag and its commit, the eeploi-helper release `MIN_HELPER` and whether it exists, the targets, the key file and its key id, and the release and its title, `eeploi-recipes VERSION`. Then it runs six steps, `Step N of 6`, and stops on the first failure:
 
-1. **Checks:** on `main`, nothing uncommitted, `main` the same as GitHub's, the tag on GitHub at the same commit and on `main`, CI green on it, the helper release there, the key's public key (`.pub` next to the secret key) the same as `minisign.pub`, no release yet for this version, and `dist/VERSION/` free.
+1. **Checks:** on `main`, nothing uncommitted, `main` the same as GitHub's, the tag on GitHub at the same commit and on `main`, CI green on it, the helper release there, the key's public key (`.pub` next to the secret key) the same as `minisign.pub`, no release or draft yet for this version, immutable releases on, every local `v*` tag the same as GitHub's (the build reads them for the manifest's versions), and `dist/VERSION/` free.
 2. **Build:** `bin/build-release.sh` (below).
-3. **Sign:** each manifest with the recipes key (`~/.minisign/eeploi-recipes.key`, or `RECIPES_KEY`), prehashed, never `-l`.
+3. **Sign:** each manifest with the recipes key (`~/.minisign/eeploi-recipes.key`, or `RECIPES_KEY`), prehashed (`-H`), never `-l`.
 4. **Verify:** `bin/build-release.sh --verify` against `minisign.pub`.
 5. **Publish:** asks first, then creates the GitHub release with the package, the manifests and their `.minisig` files. Releases are immutable: this can't be undone.
 6. **Check after:** downloads the release again and runs the step 4 checks on it (`RECIPES_DIR`): the files a fresh build from the tag makes, byte for byte, and signatures that verify against `minisign.pub`. The title must be right and the release immutable.

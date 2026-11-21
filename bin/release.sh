@@ -6,7 +6,7 @@
 # --check runs step 1 only: no key, no build, nothing published.
 # The secret key is ~/.minisign/eeploi-recipes.key, or RECIPES_KEY when set; its public key must
 # be next to it (.pub) and the same as minisign.pub.
-# Usage: bin/release.sh [--check] VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.3 1.1.0 hetzner
+# Usage: bin/release.sh [--check] VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.3 1.1.0 example
 set -euo pipefail
 export LC_ALL=C
 cd "$(dirname "$0")/.."
@@ -41,7 +41,7 @@ trap 'rm -rf "$work"' EXIT
 fail() {
   echo "release: $*" >&2
   if [ -n "$published" ]; then
-    echo "Stopped at step $step of $STEPS: $tag IS published. Look at it: gh release view $tag -R $REPO" >&2
+    echo "Stopped at step $step of $STEPS: $tag may be published, or left as a draft. Look: gh release list -R $REPO" >&2
   elif [ "$step" -gt 0 ]; then
     echo "Stopped at step $step of $STEPS: nothing was published." >&2
   fi
@@ -49,6 +49,8 @@ fail() {
 }
 begin() { step=$((step + 1)); printf '\nStep %s of %s: %s\n' "$step" "$STEPS" "$1"; }
 ok() { echo "  ✓ $*"; }
+# Any other command that fails stops here too, with the step it stopped at.
+trap 'fail "line $LINENO failed"' ERR
 # key_id <public key file>: its key id as minisign prints it. In the base64 of line 2, bytes 3 to 10
 # are the id, lowest byte first.
 key_id() {
@@ -62,12 +64,31 @@ remote_tag() {
   git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" |
     awk -v t="refs/tags/$tag^{}" 'NR == 1 { plain = $1 } $2 == t { peeled = $1 } END { print (peeled != "" ? peeled : plain) }'
 }
-# api_status <path>: 200 when GitHub has it, 404 when not; anything else stops.
-api_status() {
-  local err
-  if gh api "$1" --silent 2>"$work/api"; then echo 200; return; fi
-  err=$(cat "$work/api")
-  case "$err" in *'HTTP 404'*) echo 404 ;; *) fail "GitHub did not answer for $1: $err" ;; esac
+# gh_has <path>: true when GitHub has it, false when not (404); anything else stops.
+gh_has() {
+  gh api "$1" --silent 2>"$work/api" && return
+  grep -q 'HTTP 404' "$work/api" || fail "GitHub did not answer for $1: $(cat "$work/api")"
+  return 1
+}
+# release_exists: a release for $tag, a draft too (the tag lookup doesn't find drafts).
+release_exists() {
+  local ids
+  ids=$(gh api "repos/$REPO/releases?per_page=100" --paginate --jq ".[] | select(.tag_name == \"$tag\") | .id") ||
+    fail "GitHub did not list the releases of $REPO"
+  [ -n "$ids" ]
+}
+# tag_list local|remote: each v* tag and its commit, sorted. The build reads every v* tag for
+# the versions in the manifest, so they must be GitHub's.
+tag_list() {
+  if [ "$1" = local ]; then
+    git for-each-ref --format='%(refname)' 'refs/tags/v*' | while IFS= read -r ref; do
+      echo "${ref#refs/tags/} $(git rev-parse "$ref^{commit}")"
+    done
+  else
+    git ls-remote --tags origin 'v*' | awk '{ sub("^refs/tags/", "", $2) }
+      $2 ~ /\^\{\}$/ { sub("\\^\\{\\}$", "", $2); peeled[$2] = $1; next } { plain[$2] = $1 }
+      END { for (t in plain) print t, (t in peeled ? peeled[t] : plain[t]) }'
+  fi | sort
 }
 
 for cmd in git gh minisign base64 od; do
@@ -82,8 +103,11 @@ clean=; [ -n "$(git status --porcelain)" ] || clean=1
 synced=; [ "$head" != "$(git rev-parse origin/main)" ] || synced=1
 tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
 remote_tagged=$(remote_tag)
-helper_status=$(api_status "repos/$HELPER_REPO/releases/tags/v$min_helper")
-release_status=$(api_status "repos/$REPO/releases/tags/$tag")
+helper_ok=; if gh_has "repos/$HELPER_REPO/releases/tags/v$min_helper"; then helper_ok=1; fi
+release_found=; if release_exists; then release_found=1; fi
+immutable_on=$(gh api "repos/$REPO/immutable-releases" --jq .enabled) || fail "GitHub did not say whether $REPO has immutable releases"
+tag_list local > "$work/tags.local"
+tag_list remote > "$work/tags.remote" || fail "could not list the tags on GitHub"
 pub_id=$(key_id minisign.pub)
 key_pub=${key%.key}.pub
 key_pub_id=; [ ! -f "$key_pub" ] || key_pub_id=$(key_id "$key_pub")
@@ -98,10 +122,10 @@ if [ -z "$tagged" ]; then
 else
   printf '  tag      %s = %s%s\n' "$tag" "$(git rev-parse --short "$tagged")" "$([ "$remote_tagged" = "$tagged" ] || echo ' (NOT on GitHub as that)')"
 fi
-printf '  helper   needs %s (%s)\n' "$min_helper" "$([ "$helper_status" = 200 ] && echo 'released ✓' || echo 'NOT released')"
+printf '  helper   needs %s (%s)\n' "$min_helper" "$([ -n "$helper_ok" ] && echo 'released ✓' || echo 'NOT released')"
 printf '  targets  %s on %s\n' "${providers[*]}" "${oses[*]:-?}"
 printf '  key      %s (%s)\n' "${key/#$HOME/~}" "${key_pub_id:-no .pub next to it}"
-printf '  release  %s, titled %s\n' "$([ "$release_status" = 404 ] && echo new || echo 'EXISTS')" "$title"
+printf '  release  %s, titled %s\n' "$([ -z "$release_found" ] && echo new || echo 'EXISTS')" "$title"
 
 begin checks
 [ "$branch" = main ] || fail "not on main"
@@ -112,10 +136,13 @@ ok "on main at $(git rev-parse --short "$head"), clean, the same as GitHub"
 [ "$remote_tagged" = "$tagged" ] || fail "$tag is not on GitHub as $(git rev-parse --short "$tagged") (GitHub: ${remote_tagged:-no such tag})"
 git merge-base --is-ancestor "$tagged" origin/main || fail "$tag is not on main"
 ok "$tag = $(git rev-parse --short "$tagged"), the same on GitHub, on main"
+diff "$work/tags.local" "$work/tags.remote" | sed -n 's/^</  here only or other:/p; s/^>/  GitHub only or other:/p' >&2 || true
+cmp -s "$work/tags.local" "$work/tags.remote" || fail "the v* tags here are not GitHub's (above): git fetch --tags, or remove a local one"
+ok "every v* tag the same as GitHub's"
 ci=$(gh run list -R "$REPO" --commit "$tagged" --workflow ci.yml --event push --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
 [ "$ci" = "completed success" ] || fail "CI on $tag is not green (${ci:-no run})"
 ok "CI on $tag green"
-[ "$helper_status" = 200 ] || fail "no eeploi-helper release v$min_helper"
+[ -n "$helper_ok" ] || fail "no eeploi-helper release v$min_helper"
 ok "eeploi-helper v$min_helper released"
 [ "${#oses[@]}" -gt 0 ] || fail "$tag has no ubuntu-* folder"
 # The secret key's id can't be read without its password; its public key next to it must be
@@ -125,8 +152,10 @@ case "$key" in /*) ;; *) fail "RECIPES_KEY must be an absolute path: $key" ;; es
 [ -f "$key_pub" ] || fail "no public key at $key_pub next to the secret key"
 [ "$(sed -n 2p "$key_pub")" = "$(sed -n 2p minisign.pub)" ] || fail "$key_pub ($key_pub_id) is not minisign.pub ($pub_id)"
 ok "key $key_pub_id, the same as minisign.pub"
-[ "$release_status" = 404 ] || fail "$REPO already has a release $tag: releases are immutable"
-ok "no release $tag yet"
+[ -z "$release_found" ] || fail "$REPO already has a release $tag, maybe a draft: releases are immutable"
+ok "no release $tag yet, no draft either"
+[ "$immutable_on" = true ] || fail "$REPO does not have immutable releases on"
+ok "immutable releases on"
 [ ! -e "$out" ] || fail "$out exists from an earlier run: remove it first (rm -r $out)"
 ok "$out is free"
 if [ -n "$check_only" ]; then
@@ -137,15 +166,14 @@ fi
 
 begin build
 bin/build-release.sh "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' || fail "the build failed"
-[ -d "$out" ] || fail "the build left no $out"
 ok "built from $tag"
 
 begin sign
 manifests=("$out"/*.manifest)
 for m in "${manifests[@]}"; do
   echo "  ${m##*/}"
-  # Prehashed (ED) is minisign's default; never -l.
-  minisign -S -s "$key" -m "$m" || fail "minisign did not sign $m"
+  # Prehashed (ED), never -l: -H asks for it, also where it is not the default.
+  minisign -S -H -s "$key" -m "$m" || fail "minisign did not sign $m"
 done
 ok "${#manifests[@]} manifests signed"
 
@@ -156,12 +184,12 @@ ok "verified against minisign.pub ($pub_id)"
 begin publish
 files=("$out"/*)
 printf '  %s\n' "${files[@]##*/}"
-read -r -p "  Publish these as $REPO $tag, \"$title\"? Releases are immutable: this can't be undone. [y/N] " answer
+read -r -p "  Publish these as $REPO $tag, \"$title\"? Releases are immutable: this can't be undone. [y/N] " answer || answer=
 [ "$answer" = y ] || fail "not published"
 # The folder or the tag can move while the question waits: check them again before anything goes up.
 [ "$(git rev-parse HEAD)" = "$head" ] || fail "the folder moved off $(git rev-parse --short "$head") since the checks: run it again"
 [ "$(remote_tag)" = "$tagged" ] || fail "$tag on GitHub changed since the checks"
-[ "$(api_status "repos/$REPO/releases/tags/$tag")" = 404 ] || fail "a release $tag appeared since the checks"
+! release_exists || fail "a release $tag appeared since the checks"
 published=1 # from here a failure may leave a release
 gh release create "$tag" "${files[@]}" -R "$REPO" --verify-tag --title "$title" \
   --notes "Signed with the recipes key $pub_id. Needs eeploi-helper $min_helper." || fail "gh release create failed"
@@ -174,7 +202,8 @@ gh release download "$tag" -R "$REPO" -D "$work/down" || fail "could not downloa
 # signatures that verify against minisign.pub.
 env -u RECIPES_PUB RECIPES_DIR="$work/down" bin/build-release.sh --verify "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' ||
   fail "the published release does not verify"
-IFS=$'\t' read -r got_title immutable < <(gh release view "$tag" -R "$REPO" --json name,isImmutable --jq '[.name, (.isImmutable | tostring)] | @tsv')
+IFS=$'\t' read -r got_title immutable < <(gh release view "$tag" -R "$REPO" --json name,isImmutable --jq '[.name, (.isImmutable | tostring)] | @tsv') ||
+  fail "could not read $tag back from GitHub"
 [ "$got_title" = "$title" ] || fail "the release is titled $got_title, not $title"
 [ "$immutable" = true ] || fail "the release $tag is not immutable"
 ok "the published files verify as in step 4, titled $title, immutable"
