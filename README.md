@@ -79,6 +79,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   The helper is the release CI pins, with only its recipes key and its release address changed for a test key and a local server.
   `recipe-run` on a release built in CI ends `result ok` twice, the second time with every step the same, and fails when a check fails.
   npm, as the deploy user runs it, prints no warning and no update notice.
+  Last, Lynis audits that server: its hardening index, warnings and suggestions go to the job summary and the report is kept, a report only, never a failure.
 
 A CI change updates the comments in `ci.yml`. This section changes only when what a job guarantees changes.
 
