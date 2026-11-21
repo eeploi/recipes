@@ -36,7 +36,7 @@ render() {
       -e 's/^\{[a-z_]+\}$//' -e "$helper_values" \
       -e 's/\{report_url\}/https:\/\/eeploi.example\/report/g' \
       -e 's/\{ranges\}/192.0.2.0\/24 198.51.100.0\/24/g; s/\{database\}/mariadb-server/g; s/\{npm\}/11.21.3/g' \
-      -e 's/\{helper_path\}/\/usr\/local\/bin\/eeploi-helper/g; s/\{codename\}/resolute/g')
+      -e 's/\{helper_path\}/\/usr\/local\/sbin\/eeploi-helper/g; s/\{codename\}/resolute/g')
   fi
   printf '%s\n' "$out"
   # A {name} left over is a value this script doesn't know. ${name} and $x{name} are bash.

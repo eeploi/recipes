@@ -9,7 +9,11 @@ apt-get install -yq nginx redis-server supervisor nodejs npm {database} \
   php$PHP-bcmath php$PHP-intl php$PHP-gd php$PHP-redis php$PHP-mysql php$PHP-pgsql php$PHP-sqlite3
 npm install -g --no-audit --no-fund --fetch-retries=5 npm@{npm}
 # The pinned npm takes over Ubuntu's builtin config: without globalignorefile, which npm warns about
-# on every run, and without the update notice, as eeploi pins npm.
-sed -i '/^globalignorefile=/d' /usr/local/lib/node_modules/npm/npmrc
-grep -qx 'update-notifier=false' /usr/local/lib/node_modules/npm/npmrc || echo 'update-notifier=false' >> /usr/local/lib/node_modules/npm/npmrc
+# on every run, and without the update notice, as eeploi pins npm. Written whole, so a run again
+# gives the same file.
+NPMRC=/usr/local/lib/node_modules/npm/npmrc
+NPMRC_TMP=$(mktemp "$NPMRC.XXXXXX")
+{ [ ! -f "$NPMRC" ] || grep -vE '^[[:space:]]*(globalignorefile|update-notifier)[[:space:]]*=' "$NPMRC" || true; echo 'update-notifier=false'; } > "$NPMRC_TMP"
+chmod 644 "$NPMRC_TMP"
+mv -f "$NPMRC_TMP" "$NPMRC"
 [ -x /usr/local/bin/composer ] || curl -fsSL --retry 5 --retry-all-errors https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer

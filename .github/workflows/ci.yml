@@ -476,19 +476,20 @@ jobs:
             [ "$(tail -n 1 <<< "$out")" = "result failed" ]
             chmod +x /usr/local/bin/composer'
 
-      # npm, as the deploy user runs it: the pinned version, with nothing else printed, and no
-      # update notice.
+      # npm, as the deploy user runs it: the version the script pins, with nothing else printed,
+      # and no update notice.
       - name: server, npm
         run: |
-          docker exec server runuser -u deploy -- env -i HOME=/home/deploy PATH=/usr/local/bin:/usr/bin:/bin bash -euc '
+          pin=$(docker exec server grep -o 'npm@[0-9.]*$' /root/by-hand.sh)
+          docker exec server runuser -u deploy -- env -i HOME=/home/deploy PATH=/usr/local/bin:/usr/bin:/bin PIN="$pin" bash -euc '
             cd
             out=$(npm --version 2>&1)
             echo "$out"
-            [ "$out" = 11.21.3 ]
+            [ "npm@$out" = "$PIN" ]
             [ "$(npm config get update-notifier)" = false ]'
 
       # Step 1's check fails on Ubuntu's globalignorefile back in the pinned npm's builtin config,
-      # and on the update notice back on.
+      # on the update notice back on, and on it turned on again after it is off.
       - name: server, the npm check
         run: |
           docker exec server bash -euc '
@@ -500,5 +501,8 @@ jobs:
             cp /root/npmrc "$npmrc"
             sed -i "/^update-notifier=/d" "$npmrc"
             if bash /root/check; then echo "check passed with the update notice"; exit 1; fi
+            cp /root/npmrc "$npmrc"
+            echo "update-notifier = true" >> "$npmrc"
+            if bash /root/check; then echo "check passed with the update notice on again"; exit 1; fi
             cp /root/npmrc "$npmrc"
             bash /root/check'
