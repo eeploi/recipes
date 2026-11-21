@@ -13,6 +13,7 @@ NGINX
 rm -f /etc/nginx/sites-enabled/default
 # The catch-all for unknown hosts refuses the TLS handshake before any HTTP, so it needs no
 # certificate: the self-signed one an older release made goes.
+install -d -m 755 /etc/nginx/ssl
 rm -f /etc/nginx/ssl/catch-all.crt /etc/nginx/ssl/catch-all.key
 cat > /etc/nginx/sites-available/catch-all <<'NGINX'
 server {
