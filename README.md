@@ -71,7 +71,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   The first boot's report to eeploi works against a fake eeploi.
   A release builds from a tag, matches its manifest, and refuses what the helper would refuse.
   `--verify` takes only a release that is unchanged and signed, prehashed, with the right key.
-  The key in `minisign.pub` is `RECIPES_PUBKEY` in the helper release CI pins (`HELPER_TAG`).
+  The key in `minisign.pub` is `RECIPES_PUBKEY` in the helper release CI pins (`HELPER_TAG`), and the provider name rule in `bin/` is the one `recipe-run` checks there.
   In a fresh Ubuntu 26.04 container, each `always` step runs twice as the helper runs it, leaves `/etc` the same on the second run, fails no unit, and passes its check.
   Each check is read-only, and where `ci.yml` tests it, fails without what its step writes.
   The fingerprint prints only known facts.
