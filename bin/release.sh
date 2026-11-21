@@ -141,7 +141,8 @@ git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted
 # minisign refuses a signature whose key id is not the public key's, so a manifest signed with
 # another key fails here, not on every server.
 # A link is refused too: what goes up would be its target. So is a legacy signature (algorithm Ed,
-# not the prehashed ED), which the helper refuses: the first two bytes of the signature line.
+# not the prehashed ED), which the helper refuses: in base64, ED and the next byte start RU[Q-T],
+# Ed RW. -H on minisign -V refuses it again.
 if [ -n "$verify" ]; then
   { for f in "$build"/*; do echo "${f##*/}"; done; for f in "$build"/*.manifest; do echo "${f##*/}.minisig"; done; } | sort > "$tmp/want"
   (cd "$out" && find . -mindepth 1 -maxdepth 1 | sed 's|^\./||' | sort) > "$tmp/have"
@@ -155,8 +156,7 @@ if [ -n "$verify" ]; then
   for f in "$build"/*.manifest; do
     sig=$out/${f##*/}.minisig
     plain_file "$sig"
-    alg=$(sed -n 2p "$sig" | cut -c1-4 | { base64 -d 2>/dev/null || true; } | od -An -tx1 | tr -d ' \n')
-    [ "${alg:0:4}" = 4544 ] || { echo "$sig is no prehashed signature (ED): sign without -l" >&2; exit 1; }
+    case $(sed -n 2p "$sig") in RU[Q-T]*) ;; *) echo "$sig is no prehashed signature (ED): sign without -l" >&2; exit 1 ;; esac
     minisign -V -H -q -p "$pub" -m "$f" -x "$sig" || { echo "$sig does not verify the manifest $tag builds against $pub" >&2; exit 1; }
   done
   echo "Verified $tag ($(git rev-parse "$tag^{commit}")) in $out against $pub:"
