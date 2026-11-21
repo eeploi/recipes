@@ -589,12 +589,8 @@ jobs:
             cp /root/npmrc "$npmrc"
             bash /root/check'
 
-      # Lynis, last, on the server as the steps and recipe-run left it: a report to find what we
-      # missed, never a gate. Ubuntu's own package, so nothing from Lynis is copied here. The
-      # hardening index, the warnings and the suggestions go to the job summary, and the report
-      # and log are kept as an artifact.
-      # With a PHP from packages.sury.org, step 1's check fails on another key, another source line
-      # and the Launchpad PPA back.
+      # With a PHP from packages.sury.org, step 1's check fails on another key, another source line,
+      # no source, no key, and the Launchpad PPA's key or source back.
       - name: server, the PHP source check
         if: matrix.php != '8.5'
         run: |
@@ -606,9 +602,18 @@ jobs:
             fails() { if bash /root/check > /dev/null 2>&1; then echo "check passed with $1"; exit 1; fi; cp /root/sury-php.asc "$key"; cp /root/sury-php.sources "$src"; }
             echo >> "$key"; fails "another key"
             sed -i "s|^URIs: .*|URIs: https://mirror.example/php|" "$src"; fails "another source"
+            rm "$src"; fails "no source"
+            rm "$key"; fails "no key"
             touch /etc/apt/keyrings/ondrej.asc; fails "the PPA key"; rm /etc/apt/keyrings/ondrej.asc
+            touch /etc/apt/trusted.gpg.d/ondrej-ubuntu-php.gpg; fails "the PPA key in trusted.gpg.d"; rm /etc/apt/trusted.gpg.d/ondrej-ubuntu-php.gpg
+            touch /etc/apt/sources.list.d/ondrej-ubuntu-php-resolute.sources; fails "the PPA source"
+            rm /etc/apt/sources.list.d/ondrej-ubuntu-php-resolute.sources
             bash /root/check'
 
+      # Lynis, last, on the server as the steps and recipe-run left it: a report to find what we
+      # missed, never a gate. Ubuntu's own package, so nothing from Lynis is copied here. The
+      # hardening index, the warnings and the suggestions go to the job summary, and the report
+      # and log are kept as an artifact.
       - name: server, Lynis report
         if: matrix.php == '8.5'
         continue-on-error: true
