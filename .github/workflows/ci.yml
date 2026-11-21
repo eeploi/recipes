@@ -542,3 +542,40 @@ jobs:
             if bash /root/check; then echo "check passed with the update notice on again"; exit 1; fi
             cp /root/npmrc "$npmrc"
             bash /root/check'
+
+      # Lynis, last, on the server as the steps and recipe-run left it: a report to find what we
+      # missed, never a gate. Ubuntu's own package, so nothing from Lynis is copied here. The
+      # hardening index, the warnings and the suggestions go to the job summary, and the report
+      # and log are kept as an artifact.
+      - name: server, Lynis report
+        continue-on-error: true
+        run: |
+          docker exec server bash -euc '
+            DEBIAN_FRONTEND=noninteractive apt-get install -yq lynis > /dev/null
+            lynis audit system --quick --no-colors > /dev/null 2>&1 || true
+            cp /var/log/lynis-report.dat /var/log/lynis.log /root/'
+          mkdir "$RUNNER_TEMP/lynis"
+          docker cp server:/root/lynis-report.dat "$RUNNER_TEMP/lynis/"
+          docker cp server:/root/lynis.log "$RUNNER_TEMP/lynis/"
+          r=$RUNNER_TEMP/lynis/lynis-report.dat
+          {
+            echo "## Lynis $(sed -n 's/^lynis_version=//p' "$r")"
+            echo
+            echo "Hardening index: $(sed -n 's/^hardening_index=//p' "$r")"
+            echo
+            echo "### Warnings"
+            echo
+            sed -n 's/^warning\[\]=/- /p' "$r"
+            echo
+            echo "### Suggestions"
+            echo
+            sed -n 's/^suggestion\[\]=/- /p' "$r"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: server, keep the Lynis report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lynis
+          path: ${{ runner.temp }}/lynis/
+          if-no-files-found: ignore
