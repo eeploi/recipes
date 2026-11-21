@@ -470,7 +470,8 @@ jobs:
             useradd -m -s /bin/bash deploy
             passwd -l deploy > /dev/null
             install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
-            echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGNpLXRlc3Qta2V5LW5vdC1yZWFsLWNpLXRlc3Q ci" > /home/deploy/.ssh/authorized_keys
+            ssh-keygen -q -t ed25519 -N "" -C ci -f /root/ci-key
+            cp /root/ci-key.pub /home/deploy/.ssh/authorized_keys
             chown deploy:deploy /home/deploy/.ssh/authorized_keys
             chmod 600 /home/deploy/.ssh/authorized_keys
             install -d -m 755 /etc/eeploi
@@ -520,7 +521,8 @@ jobs:
 
       # Step 4 runs again and changes nothing (and leaves the package's moduli file as it is), and its
       # check passes. Then the check fails on each setting turned back in a drop-in that sorts
-      # first, on a modulus under 3072 bits and on another mode of eeploi's moduli file.
+      # first (a NIST curve, SHA-1 or the ECDSA host key back among them, or the post-quantum key
+      # exchange not first), on a modulus under 3072 bits and on another mode of eeploi's moduli file.
       - name: server, the SSH check
         run: |
           docker exec server bash -euc '
@@ -535,7 +537,8 @@ jobs:
             for line in "Port 10023" "PermitRootLogin yes" "PasswordAuthentication yes" "KbdInteractiveAuthentication yes" \
               "PubkeyAuthentication no" "AllowUsers other" "MaxAuthTries 6" "LoginGraceTime 120" "MaxStartups 100" "X11Forwarding yes" \
               "AllowAgentForwarding yes" "AllowTcpForwarding yes" "AllowStreamLocalForwarding yes" "PermitTunnel yes" \
-              "ModuliFile /etc/ssh/moduli"; do
+              "ModuliFile /etc/ssh/moduli" "KexAlgorithms +ecdh-sha2-nistp256" "KexAlgorithms sntrup761x25519-sha512,mlkem768x25519-sha256" \
+              "MACs +hmac-sha1-etm@openssh.com" "HostKeyAlgorithms +ecdsa-sha2-nistp256" "HostKey /etc/ssh/ssh_host_ecdsa_key"; do
               echo "$line" > /etc/ssh/sshd_config.d/00-aaa.conf
               if bash /root/ssh-check > /dev/null 2>&1; then echo "SSH check passed with $line"; exit 1; fi
             done
@@ -547,6 +550,19 @@ jobs:
             if bash /root/ssh-check > /dev/null 2>&1; then echo "SSH check passed with moduli 0600"; exit 1; fi
             chmod 644 /etc/ssh/eeploi-moduli
             bash /root/ssh-check'
+
+      # The deploy user logs in with OpenSSH's own client, as eeploi does, with its ed25519 key: the
+      # host keys offered are ed25519 and RSA only, and the ECDSA key file is still there.
+      - name: server, an SSH login
+        run: |
+          docker exec server bash -euc '
+            [ -f /etc/ssh/ssh_host_ecdsa_key ]
+            keys=$(ssh-keyscan -p 10022 127.0.0.1 2> /dev/null | cut -d" " -f2 | sort | paste -sd" ")
+            echo "$keys"
+            [ "$keys" = "rsa-sha2-512 ssh-ed25519" ] || [ "$keys" = "ssh-ed25519 ssh-rsa" ]
+            ssh -i /root/ci-key -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/known_hosts \
+              -p 10022 deploy@127.0.0.1 true
+            ssh-keygen -F "[127.0.0.1]:10022" -f /root/known_hosts | grep -q ssh-ed25519'
 
       # ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
       - name: server, ssh-audit report

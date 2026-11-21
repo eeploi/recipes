@@ -1,5 +1,6 @@
 # 4. SSH: custom port, keys only, no root login, few tries, no forwarding but local (an SSH tunnel to
-#    the database). 00- sorts first: sshd keeps the first value it reads, so a 50-cloud-init.conf
+#    the database), no NIST curves or SHA-1 in what it offers, host keys ed25519 and RSA only (eeploi
+#    pins the ed25519 one). 00- sorts first: sshd keeps the first value it reads, so a 50-cloud-init.conf
 #    with password login can't win. An old eeploi.conf goes.
 STEP='4. SSH'
 rm -f /etc/ssh/sshd_config.d/eeploi.conf
@@ -26,6 +27,11 @@ AllowTcpForwarding local
 AllowStreamLocalForwarding local
 PermitTunnel no
 ModuliFile /etc/ssh/eeploi-moduli
+KexAlgorithms -ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521
+MACs -hmac-sha1-etm@openssh.com,hmac-sha1
+HostKeyAlgorithms -ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
 SSHD
 sshd -t
 # Ubuntu's sshd-socket-generator writes ssh.socket's addresses from the Port above, on IPv4 and
