@@ -33,7 +33,7 @@ out=dist/$version
 if [ -n "$verify" ]; then
   command -v minisign >/dev/null || { echo "minisign is not installed" >&2; exit 1; }
   [ -f "$pub" ] || { echo "no public key at $pub" >&2; exit 1; }
-  [ -d "$out" ] && [ ! -L "$out" ] || { echo "$out is no folder: build it first" >&2; exit 1; }
+  if [ ! -d "$out" ] || [ -L "$out" ]; then echo "$out is no folder: build it first" >&2; exit 1; fi
 else
   [ ! -e "$out" ] || { echo "$out exists" >&2; exit 1; }
 fi
@@ -139,29 +139,30 @@ git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted
 # What goes up is what this tag builds, and each signature is the recipes key's over those bytes.
 # minisign refuses a signature whose key id is not the public key's, so a manifest signed with
 # another key fails here, not on every server.
+# A link is refused too: what goes up would be its target.
 if [ -n "$verify" ]; then
-  diff <({ for f in "$build"/*; do echo "${f##*/}"; done; for f in "$build"/*.manifest; do echo "${f##*/}.minisig"; done; } | sort) \
-    <(cd "$out" && find . -mindepth 1 -maxdepth 1 | sed 's|^\./||' | sort) | sed -n 's/^< /missing: /p; s/^> /not built: /p' > "$tmp/diff" || true
+  { for f in "$build"/*; do echo "${f##*/}"; done; for f in "$build"/*.manifest; do echo "${f##*/}.minisig"; done; } | sort > "$tmp/want"
+  (cd "$out" && find . -mindepth 1 -maxdepth 1 | sed 's|^\./||' | sort) > "$tmp/have"
+  { comm -23 "$tmp/want" "$tmp/have" | sed 's/^/missing: /'; comm -13 "$tmp/want" "$tmp/have" | sed 's/^/not built: /'; } > "$tmp/diff"
   [ ! -s "$tmp/diff" ] || { echo "$out holds other files than $tag builds, with a .minisig per manifest:" >&2; cat "$tmp/diff" >&2; exit 1; }
+  plain_file() { if [ ! -f "$1" ] || [ -L "$1" ]; then echo "$1 is no plain file" >&2; exit 1; fi; }
   for f in "$build"/*; do
-    name=${f##*/}
-    [ -f "$out/$name" ] && [ ! -L "$out/$name" ] || { echo "$out/$name is no plain file" >&2; exit 1; }
-    cmp -s "$f" "$out/$name" || { echo "$out/$name is not the file $tag builds" >&2; exit 1; }
+    plain_file "$out/${f##*/}"
+    cmp -s "$f" "$out/${f##*/}" || { echo "$out/${f##*/} is not the file $tag builds" >&2; exit 1; }
   done
   for f in "$build"/*.manifest; do
     sig=$out/${f##*/}.minisig
-    [ -f "$sig" ] && [ ! -L "$sig" ] || { echo "$sig is no plain file" >&2; exit 1; }
+    plain_file "$sig"
     minisign -V -q -p "$pub" -m "$f" -x "$sig" || { echo "$sig does not verify the manifest $tag builds against $pub" >&2; exit 1; }
   done
   echo "Verified $tag ($(git rev-parse "$tag^{commit}")) in $out against $pub:"
-  ls -1 "$out"
-  exit 0
+else
+  mkdir -p dist
+  mv "$build" "$out"
+  echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
 fi
-
-mkdir -p dist
-mv "$build" "$out"
-echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
 ls -1 "$out"
+[ -z "$verify" ] || exit 0
 echo
 echo 'Sign each manifest with the recipes key:'
 for manifest in "$out"/*.manifest; do printf '  minisign -S -s %q -m %q\n' "$key" "$manifest"; done

@@ -69,8 +69,7 @@ jobs:
       # manifest signed again, a stale or missing .minisig, a changed package and a file not built.
       - name: release, verify the signatures
         run: |
-          sudo apt-get update -q > /dev/null
-          sudo apt-get install -yq minisign > /dev/null
+          sudo apt-get install -yq minisign > /dev/null 2>&1 || { sudo apt-get update -q > /dev/null; sudo apt-get install -yq minisign > /dev/null; }
           k=$RUNNER_TEMP/keys
           mkdir "$k"
           minisign -G -W -p "$k/test.pub" -s "$k/test.key" > /dev/null
@@ -78,16 +77,14 @@ jobs:
           d=dist/99.0.0
           m=$d/recipes-99.0.0-example-ubuntu-26.04.manifest
           minisign -S -s "$k/test.key" -m "$m" > /dev/null
-          verify() { RECIPES_PUB=$k/test.pub bin/release.sh --verify 99.0.0 0.1.0 example 2>&1; }
+          verify() { RECIPES_PUB=${RECIPES_PUB:-$k/test.pub} bin/release.sh --verify 99.0.0 0.1.0 example 2>&1; }
           refused() {
             if out=$(verify); then echo "$out"; echo "verify took $1"; exit 1; fi
             echo "$out"
             grep -qxF "$2" <<< "$out"
           }
           verify
-          if out=$(bin/release.sh --verify 99.0.0 0.1.0 example 2>&1); then echo "$out"; echo 'verify took the test key for the recipes key'; exit 1; fi
-          echo "$out"
-          grep -qxF 'but the key id in the public key is D03C6EB200F583F7' <<< "$out"
+          RECIPES_PUB=minisign.pub refused 'the test key for the recipes key' "but the key id in the public key is $(sed -n '1s/.* //p' minisign.pub)"
           cp "$m" "$m.minisig" "$k/"
           minisign -S -s "$k/other.key" -m "$m" > /dev/null
           refused 'another key' "$m.minisig does not verify the manifest v99.0.0 builds against $k/test.pub"
