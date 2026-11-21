@@ -405,7 +405,8 @@ jobs:
           cp -R dist/99.0.0 "$RUNNER_TEMP/www/v99.0.0"
           ls -l "$RUNNER_TEMP/www/v99.0.0"
 
-      # A fresh Ubuntu 26.04 with what a cloud image brings that the steps use: systemd, SSH, sudo.
+      # A fresh Ubuntu 26.04 with what a cloud image brings that the steps use: systemd, SSH, sudo,
+      # logrotate.
       # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
       # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
       # Then the script printed to run by hand, as eeploi renders it, with Ubuntu's own PHP.
@@ -415,7 +416,7 @@ jobs:
           ARG UBUNTU_IMAGE
           FROM $UBUNTU_IMAGE
           RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
-                openssh-server sudo kmod iproute2 python3 openssl ca-certificates
+                openssh-server sudo kmod iproute2 logrotate python3 openssl ca-certificates
           CMD ["/sbin/init"]
           DOCKERFILE
           docker run -d --name server --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \
@@ -475,16 +476,29 @@ jobs:
             [ "$(tail -n 1 <<< "$out")" = "result failed" ]
             chmod +x /usr/local/bin/composer'
 
-      # For #28 d: what npm reads as its builtin config, and what it prints to the deploy user.
-      # Temporary, with what logrotate says about eeploi's file under the helper's environment.
+      # npm, as the deploy user runs it: the pinned version, with nothing else printed, and no
+      # update notice.
       - name: server, npm
-        if: always()
         run: |
-          docker exec server env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LC_ALL=C logrotate -d /etc/logrotate.d/eeploi 2>&1 | tail -n 20 || true
-          docker exec server ls -la /home/deploy || true
-          docker exec server bash -uc '
-            for f in /usr/local/lib/node_modules/npm/npmrc /usr/share/nodejs/npm/npmrc /usr/lib/node_modules/npm/npmrc /etc/npmrc /usr/local/etc/npmrc; do
-              echo "== $f"; cat "$f" 2>&1
-            done
-            ls -l /usr/local/bin/npm /usr/bin/npm
-            runuser -u deploy -- env -i HOME=/home/deploy PATH=/usr/local/bin:/usr/bin:/bin bash -c "cd; npm --version; npm config ls -l 2>&1 | grep -iE \"globalignore|globalconfig|update-notifier|prefix\""'
+          docker exec server runuser -u deploy -- env -i HOME=/home/deploy PATH=/usr/local/bin:/usr/bin:/bin bash -euc '
+            cd
+            out=$(npm --version 2>&1)
+            echo "$out"
+            [ "$out" = 11.21.3 ]
+            [ "$(npm config get update-notifier)" = false ]'
+
+      # Step 1's check fails on Ubuntu's globalignorefile back in the pinned npm's builtin config,
+      # and on the update notice back on.
+      - name: server, the npm check
+        run: |
+          docker exec server bash -euc '
+            npmrc=/usr/local/lib/node_modules/npm/npmrc
+            RENDER_PHP=8.5 bin/render.sh --check ubuntu-26.04/01-packages.sh > /root/check
+            cp "$npmrc" /root/npmrc
+            echo globalignorefile=/etc/npmignore >> "$npmrc"
+            if bash /root/check; then echo "check passed with globalignorefile"; exit 1; fi
+            cp /root/npmrc "$npmrc"
+            sed -i "/^update-notifier=/d" "$npmrc"
+            if bash /root/check; then echo "check passed with the update notice"; exit 1; fi
+            cp /root/npmrc "$npmrc"
+            bash /root/check'
