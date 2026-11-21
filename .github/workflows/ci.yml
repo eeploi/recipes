@@ -64,6 +64,57 @@ jobs:
           diff <(tar -tzf dist/99.0.0/recipes-99.0.0.tar.gz | grep -v '/$' | LC_ALL=C sort) <(awk '{ print $2 }' "$RUNNER_TEMP/sums" | LC_ALL=C sort)
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
 
+      # The release above, signed with a throwaway key: it verifies against that key, and fails
+      # against the recipes key in minisign.pub, with a manifest signed by another key, a changed
+      # manifest signed again, a stale or missing .minisig, a changed package and a file not built.
+      - name: release, verify the signatures
+        run: |
+          sudo apt-get install -yq minisign > /dev/null 2>&1 || { sudo apt-get update -q > /dev/null; sudo apt-get install -yq minisign > /dev/null; }
+          k=$RUNNER_TEMP/keys
+          mkdir "$k"
+          minisign -G -W -p "$k/test.pub" -s "$k/test.key" > /dev/null
+          minisign -G -W -p "$k/other.pub" -s "$k/other.key" > /dev/null
+          d=dist/99.0.0
+          m=$d/recipes-99.0.0-example-ubuntu-26.04.manifest
+          minisign -S -s "$k/test.key" -m "$m" > /dev/null
+          verify() { RECIPES_PUB=${RECIPES_PUB:-$k/test.pub} bin/release.sh --verify 99.0.0 0.1.0 example 2>&1; }
+          refused() {
+            if out=$(verify); then echo "$out"; echo "verify took $1"; exit 1; fi
+            echo "$out"
+            grep -qxF "$2" <<< "$out"
+          }
+          verify
+          RECIPES_PUB=minisign.pub refused 'the test key for the recipes key' "$m.minisig does not verify the manifest v99.0.0 builds against minisign.pub"
+          if out=$(verify); then grep -qxF 'NOT the recipes key in minisign.pub: RECIPES_PUB is set' <<< "$out"; else echo "$out"; exit 1; fi
+          cp "$m" "$m.minisig" "$k/"
+          minisign -S -s "$k/other.key" -m "$m" > /dev/null
+          refused 'another key' "$m.minisig does not verify the manifest v99.0.0 builds against $k/test.pub"
+          echo 'file x y' >> "$m"
+          minisign -S -s "$k/test.key" -m "$m" > /dev/null
+          refused 'a changed manifest' "$m is not the file v99.0.0 builds"
+          cp "$k/${m##*/}" "$m"
+          refused 'a stale .minisig' "$m.minisig does not verify the manifest v99.0.0 builds against $k/test.pub"
+          rm "$m.minisig"
+          refused 'no .minisig' "missing: ${m##*/}.minisig"
+          cp "$k/${m##*/}.minisig" "$m.minisig"
+          cp "$d/recipes-99.0.0.tar.gz" "$k/"
+          echo x >> "$d/recipes-99.0.0.tar.gz"
+          refused 'a changed package' "$d/recipes-99.0.0.tar.gz is not the file v99.0.0 builds"
+          cp "$k/recipes-99.0.0.tar.gz" "$d/"
+          touch "$d/extra"
+          refused 'a file not built' 'not built: extra'
+          rm "$d/extra"
+          verify
+
+      # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper, read
+      # from its main until a helper release holds it.
+      - name: release, the recipes key is the helper's
+        run: |
+          helper=$(curl -fsS --retry 3 https://raw.githubusercontent.com/eeploi/helper/main/eeploi-helper)
+          key=$(sed -n "s/^RECIPES_PUBKEY='\(.*\)'\$/\1/p" <<< "$helper")
+          [ -n "$key" ] || { echo 'no RECIPES_PUBKEY in the helper'; exit 1; }
+          [ "$key" = "$(sed -n 2p minisign.pub)" ] || { echo "minisign.pub is not the helper's RECIPES_PUBKEY ($key)"; exit 1; }
+
       # A provider the helper would refuse is refused before anything else, with only its
       # message; the shortest and the longest names the helper takes, with a dash inside, build.
       - name: release, provider names
