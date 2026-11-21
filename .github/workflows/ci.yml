@@ -512,6 +512,45 @@ jobs:
             [ "$(tail -n 1 <<< "$out")" = "result failed" ]
             chmod +x /usr/local/bin/composer'
 
+      # Step 4 runs again and changes nothing (and leaves the package's moduli file as it is), and its
+      # check passes. Then the check fails on each setting turned back in a drop-in that sorts
+      # first, on a modulus under 3072 bits and on another mode of eeploi's moduli file.
+      - name: server, the SSH check
+        run: |
+          docker exec server bash -euc '
+            bin/render.sh --step stack/04-ssh.sh > /root/ssh-step
+            bin/render.sh --check stack/04-ssh.sh > /root/ssh-check
+            cp /etc/ssh/moduli /etc/ssh/eeploi-moduli /etc/ssh/sshd_config.d/00-eeploi.conf /root/
+            bash /root/ssh-step
+            cmp /root/moduli /etc/ssh/moduli
+            cmp /root/eeploi-moduli /etc/ssh/eeploi-moduli
+            cmp /root/00-eeploi.conf /etc/ssh/sshd_config.d/00-eeploi.conf
+            bash /root/ssh-check
+            for line in "Port 10023" "PermitRootLogin yes" "PasswordAuthentication yes" "KbdInteractiveAuthentication yes" \
+              "PubkeyAuthentication no" "AllowUsers other" "MaxAuthTries 6" "LoginGraceTime 120" "MaxStartups 100" "X11Forwarding yes" \
+              "AllowAgentForwarding yes" "AllowTcpForwarding yes" "AllowStreamLocalForwarding yes" "PermitTunnel yes" \
+              "ModuliFile /etc/ssh/moduli"; do
+              echo "$line" > /etc/ssh/sshd_config.d/00-aaa.conf
+              if bash /root/ssh-check > /dev/null 2>&1; then echo "SSH check passed with $line"; exit 1; fi
+            done
+            rm /etc/ssh/sshd_config.d/00-aaa.conf
+            echo "20260101000000 2 6 100 2047 2 FFFF" >> /etc/ssh/eeploi-moduli
+            if bash /root/ssh-check > /dev/null 2>&1; then echo "SSH check passed with a 2048-bit modulus"; exit 1; fi
+            cp /root/eeploi-moduli /etc/ssh/eeploi-moduli
+            chmod 600 /etc/ssh/eeploi-moduli
+            if bash /root/ssh-check > /dev/null 2>&1; then echo "SSH check passed with moduli 0600"; exit 1; fi
+            chmod 644 /etc/ssh/eeploi-moduli
+            bash /root/ssh-check'
+
+      # ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
+      - name: server, ssh-audit report
+        continue-on-error: true
+        run: |
+          docker exec server bash -euc '
+            DEBIAN_FRONTEND=noninteractive apt-get install -yq ssh-audit > /dev/null
+            ssh-audit -n -p 10022 127.0.0.1 > /root/ssh-audit.txt 2>&1 || true'
+          { echo '## ssh-audit'; echo; echo '```'; docker exec server cat /root/ssh-audit.txt; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+
       # npm, as the deploy user runs it: the version the script pins, with nothing else printed,
       # and no update notice.
       - name: server, npm
