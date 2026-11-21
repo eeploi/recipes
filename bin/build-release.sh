@@ -4,7 +4,8 @@
 # bin/release.sh runs it, signs and publishes; run on its own, it is for CI and for a look.
 # With --verify it builds the same release again and changes nothing: dist/VERSION/ must hold
 # exactly those files, the same bytes, and a .minisig per manifest that verifies the bytes built
-# against minisign.pub, the recipes public key (RECIPES_PUB sets another, for tests).
+# against minisign.pub, the recipes public key (RECIPES_PUB sets another, for tests). RECIPES_DIR
+# sets another folder to verify, such as a release downloaded again.
 # Usage: bin/build-release.sh [--verify] VERSION MIN_HELPER PROVIDER...   such as bin/build-release.sh 0.4.0 0.5.0 example
 set -euo pipefail
 export LC_ALL=C # the name rules below match ASCII only, as the helper's
@@ -29,6 +30,10 @@ done
 tag=v$version
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag is no tag" >&2; exit 1; }
 out=dist/$version
+if [ -n "${RECIPES_DIR:-}" ]; then
+  [ -n "$verify" ] || { echo "RECIPES_DIR is for --verify only" >&2; exit 2; }
+  out=$RECIPES_DIR
+fi
 if [ -n "$verify" ]; then
   command -v minisign >/dev/null || { echo "minisign is not installed" >&2; exit 1; }
   [ -f "$pub" ] || { echo "no public key at $pub" >&2; exit 1; }

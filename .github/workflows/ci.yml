@@ -111,6 +111,13 @@ jobs:
           refused 'a file not built' 'not built: extra'
           rm "$d/extra"
           verify
+          # RECIPES_DIR verifies another folder, as release.sh does with the release downloaded again.
+          cp -R "$d" "$k/down"
+          RECIPES_DIR=$k/down verify | grep -qF "in $k/down against"
+          rm "$k/down/${m##*/}.minisig"
+          RECIPES_DIR=$k/down refused 'no .minisig in RECIPES_DIR' "missing: ${m##*/}.minisig"
+          if out=$(RECIPES_DIR=$k/x bin/build-release.sh 99.0.0 0.1.0 example 2>&1); then echo "$out"; echo 'RECIPES_DIR taken without --verify'; exit 1; fi
+          [ "$out" = 'RECIPES_DIR is for --verify only' ]
 
       # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper, read
       # from its main until a helper release holds it.

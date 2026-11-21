@@ -59,9 +59,8 @@ key_id() {
 }
 # remote_tag: the commit of $tag on GitHub, a plain tag or not, or nothing.
 remote_tag() {
-  local refs
-  refs=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
-  awk -v t="refs/tags/$tag^{}" '$2 == t { print $1; found = 1 } END { exit !found }' <<< "$refs" || awk 'NR == 1 { print $1 }' <<< "$refs"
+  git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" |
+    awk -v t="refs/tags/$tag^{}" 'NR == 1 { plain = $1 } $2 == t { peeled = $1 } END { print (peeled != "" ? peeled : plain) }'
 }
 # api_status <path>: 200 when GitHub has it, 404 when not; anything else stops.
 api_status() {
@@ -147,17 +146,15 @@ for m in "${manifests[@]}"; do
   echo "  ${m##*/}"
   # Prehashed (ED) is minisign's default; never -l.
   minisign -S -s "$key" -m "$m" || fail "minisign did not sign $m"
-  case $(sed -n 2p "$m.minisig") in RU[Q-T]*) ;; *) fail "$m.minisig is no prehashed signature (ED)" ;; esac
 done
-ok "${#manifests[@]} manifests signed, prehashed"
+ok "${#manifests[@]} manifests signed"
 
 begin verify
 env -u RECIPES_PUB bin/build-release.sh --verify "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' || fail "the release does not verify"
 ok "verified against minisign.pub ($pub_id)"
 
 begin publish
-files=()
-for f in "$out"/*; do files+=("$f"); done
+files=("$out"/*)
 printf '  %s\n' "${files[@]##*/}"
 read -r -p "  Publish these as $REPO $tag, \"$title\"? Releases are immutable: this can't be undone. [y/N] " answer
 [ "$answer" = y ] || fail "not published"
@@ -173,17 +170,13 @@ ok "published $tag"
 begin 'check after'
 mkdir "$work/down"
 gh release download "$tag" -R "$REPO" -D "$work/down" || fail "could not download $tag again"
-diff <(cd "$out" && ls -1) <(cd "$work/down" && ls -1) >/dev/null || fail "the release holds other files than $out"
-for f in "${files[@]}"; do
-  cmp -s "$f" "$work/down/${f##*/}" || fail "the published ${f##*/} is not the file built"
-done
-for m in "${manifests[@]}"; do
-  minisign -V -H -q -p minisign.pub -m "$work/down/${m##*/}" -x "$work/down/${m##*/}.minisig" ||
-    fail "the published ${m##*/}.minisig does not verify against minisign.pub"
-done
+# The same checks as step 4, on what went up: the files a fresh build from the tag makes, and
+# signatures that verify against minisign.pub.
+env -u RECIPES_PUB RECIPES_DIR="$work/down" bin/build-release.sh --verify "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' ||
+  fail "the published release does not verify"
 IFS=$'\t' read -r got_title immutable < <(gh release view "$tag" -R "$REPO" --json name,isImmutable --jq '[.name, (.isImmutable | tostring)] | @tsv')
 [ "$got_title" = "$title" ] || fail "the release is titled $got_title, not $title"
 [ "$immutable" = true ] || fail "the release $tag is not immutable"
-ok "${#files[@]} files the same as the build, signatures verify against minisign.pub, immutable"
+ok "the published files verify as in step 4, titled $title, immutable"
 
 printf '\nDone: %s, %s = %s, titled "%s".\n' "$REPO" "$tag" "$(git rev-parse --short "$tagged")" "$title"
