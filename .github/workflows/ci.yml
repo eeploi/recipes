@@ -558,7 +558,7 @@ jobs:
         run: |
           docker exec server bash -euc '
             [ -f /etc/ssh/ssh_host_ecdsa_key ]
-            keys=$(ssh-keyscan -p 10022 127.0.0.1 2> /dev/null | cut -d" " -f2 | sort | paste -sd" ")
+            keys=$(ssh-keyscan -p 10022 127.0.0.1 2> /dev/null | grep -v "^#" | cut -d" " -f2 | sort -u | paste -sd" ")
             echo "$keys"
             [ "$keys" = "ssh-ed25519 ssh-rsa" ]
             ssh -i /root/ci-key -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/known_hosts \
