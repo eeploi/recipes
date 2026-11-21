@@ -8,9 +8,12 @@ on:
 permissions:
   contents: read
 
-# The one Ubuntu 26.04 image both jobs' containers start from.
+# The one Ubuntu 26.04 image both jobs' containers start from, and the one helper release CI reads,
+# with the helper's release key (key id A2C97024AB6219A8), pinned here, not read next to the release.
 env:
   UBUNTU_IMAGE: ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+  HELPER_TAG: v1.1.0
+  HELPER_PUBKEY: RWSoGWKrJHDJoknVaEcX3dz5ew9zWZPqae2Qn2d3M+SGxNBT99NZGiLA
 
 jobs:
   check:
@@ -26,6 +29,17 @@ jobs:
 
       - name: Layout
         run: bin/check-layout.sh
+
+      # Only prehashed signatures count, as on every server: each minisign -V in ci.yml and bin/
+      # has -H, but for a line marked "legacy on purpose". Then a line without -H must fail it.
+      - name: minisign -V, prehashed only
+        run: |
+          m=minisign
+          unhashed() { grep -nE "^[^#]*${m}( [^#]*)? -V( |\$)" "$@" | grep -vE "^[^#]*${m}[^#]* -H( |\$)" | grep -v '# legacy on purpose' || true; }
+          bad=$(unhashed .github/workflows/ci.yml bin/*.sh)
+          [ -z "$bad" ] || { echo "$bad"; echo "minisign -V without -H above"; exit 1; }
+          echo "$m -V -q -p key.pub -m file" > "$RUNNER_TEMP/unhashed.sh"
+          [ -n "$(unhashed "$RUNNER_TEMP/unhashed.sh")" ]
 
       # The step files are fragments, so shellcheck runs on the script they make, as eeploi renders
       # it. SC1091: /etc/os-release is not there to follow.
@@ -102,7 +116,7 @@ jobs:
           minisign -S -l -s "$k/test.key" -m "$m" > /dev/null
           refused 'a legacy signature' "$m.minisig is no prehashed signature (ED): sign without -l"
           # minisign -V -H on its own refuses the legacy signature too, which minisign -V takes.
-          minisign -V -q -p "$k/test.pub" -m "$m" -x "$m.minisig"
+          minisign -V -q -p "$k/test.pub" -m "$m" -x "$m.minisig" # legacy on purpose: -V alone takes it
           if minisign -V -H -q -p "$k/test.pub" -m "$m" -x "$m.minisig"; then echo 'minisign -V -H took a legacy signature'; exit 1; fi
           rm "$m.minisig"
           refused 'no .minisig' "missing: ${m##*/}.minisig"
@@ -123,11 +137,11 @@ jobs:
           if out=$(RECIPES_DIR=$k/x bin/build-release.sh 99.0.0 0.1.0 example 2>&1); then echo "$out"; echo 'RECIPES_DIR taken without --verify'; exit 1; fi
           [ "$out" = 'RECIPES_DIR is for --verify only' ]
 
-      # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper, read
-      # from its main until a helper release holds it.
+      # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper
+      # release HELPER_TAG.
       - name: release, the recipes key is the helper's
         run: |
-          helper=$(curl -fsS --retry 3 https://raw.githubusercontent.com/eeploi/helper/main/eeploi-helper)
+          helper=$(curl -fsS --retry 3 "https://raw.githubusercontent.com/eeploi/helper/$HELPER_TAG/eeploi-helper")
           key=$(sed -n "s/^RECIPES_PUBKEY='\(.*\)'\$/\1/p" <<< "$helper")
           [ -n "$key" ] || { echo 'no RECIPES_PUBKEY in the helper'; exit 1; }
           [ "$key" = "$(sed -n 2p minisign.pub)" ] || { echo "minisign.pub is not the helper's RECIPES_PUBKEY ($key)"; exit 1; }
@@ -359,7 +373,7 @@ jobs:
 
   # A whole server, as eeploi builds one, then the helper's own recipe-run on a release built here:
   # every step and check of the release runs as on a live server, with the helper's PATH and clean
-  # environment, and the run must end "result ok", twice. The helper is its latest release, with a
+  # environment, and the run must end "result ok", twice. The helper is release HELPER_TAG, with a
   # test key for the recipes key and a local HTTPS server for GitHub's releases: those two lines only.
   server:
     runs-on: ubuntu-24.04
@@ -371,19 +385,16 @@ jobs:
           persist-credentials: false
           fetch-depth: 0 # the release tags, for bin/build-release.sh
 
-      # The latest helper release, checked against the helper's own key at that tag. Then the test
-      # key and the local server in, and nothing else changed.
+      # The helper release HELPER_TAG, its prehashed signature checked against the pinned release key.
+      # Then the test key and the local server in, and nothing else changed.
       - name: the helper, with a test key
         run: |
           sudo apt-get install -yq minisign > /dev/null 2>&1 || { sudo apt-get update -q > /dev/null; sudo apt-get install -yq minisign > /dev/null; }
           h=$RUNNER_TEMP/helper
-          tag=$(gh release view -R eeploi/helper --json tagName -q .tagName)
-          echo "helper $tag"
-          gh release download "$tag" -R eeploi/helper -p eeploi-helper -p eeploi-helper.minisig -D "$h"
-          curl -fsS --retry 3 -o "$h/minisign.pub" "https://raw.githubusercontent.com/eeploi/helper/$tag/minisign.pub"
-          minisign -V -q -p "$h/minisign.pub" -m "$h/eeploi-helper"
-          grep -qxF "VERSION='${tag#v}'" "$h/eeploi-helper"
-          echo "HELPER_VERSION=${tag#v}" >> "$GITHUB_ENV"
+          gh release download "$HELPER_TAG" -R eeploi/helper -p eeploi-helper -p eeploi-helper.minisig -D "$h"
+          minisign -V -H -q -P "$HELPER_PUBKEY" -m "$h/eeploi-helper"
+          grep -qxF "VERSION='${HELPER_TAG#v}'" "$h/eeploi-helper"
+          echo "HELPER_VERSION=${HELPER_TAG#v}" >> "$GITHUB_ENV"
           k=$RUNNER_TEMP/keys
           mkdir "$k"
           minisign -G -W -p "$k/test.pub" -s "$k/test.key" > /dev/null
