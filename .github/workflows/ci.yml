@@ -552,6 +552,24 @@ jobs:
             chmod 644 /etc/ssh/eeploi-moduli
             bash /root/ssh-check'
 
+      # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails
+      # with the catch-all off, without ssl_reject_handshake, or with a certificate back.
+      - name: server, the nginx catch-all
+        run: |
+          docker exec server bash -euc '
+            rc=0; curl -sk --max-time 10 -o /dev/null https://unknown.example --resolve unknown.example:443:127.0.0.1 || rc=$?
+            [ "$rc" = 35 ] || { echo "curl exit $rc, not a refused handshake (35)"; exit 1; }
+            bin/render.sh --check stack/08-nginx.sh > /root/nginx-check
+            bash /root/nginx-check
+            f=/etc/nginx/sites-available/catch-all
+            cp "$f" /root/catch-all
+            fails() { if bash /root/nginx-check > /dev/null 2>&1; then echo "nginx check passed with $1"; exit 1; fi; cp /root/catch-all "$f"; }
+            rm /etc/nginx/sites-enabled/catch-all; fails "the catch-all off"; ln -s "$f" /etc/nginx/sites-enabled/catch-all
+            sed -i "/ssl_reject_handshake/d" "$f"; fails "no ssl_reject_handshake"
+            sed -i "s|ssl_reject_handshake on;|&\n    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;|" "$f"; fails "a certificate"
+            touch /etc/nginx/ssl/catch-all.key; fails "the old key"; rm /etc/nginx/ssl/catch-all.key
+            bash /root/nginx-check'
+
       # The deploy user logs in with OpenSSH's own client, as eeploi does, with its ed25519 key: the
       # host keys offered are ed25519 and RSA only, and the ECDSA key file is still there.
       - name: server, an SSH login
