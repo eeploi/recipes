@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.." || exit 1
 # network (the helper download, the report to eeploi), so a read-only check has nothing to read.
 NO_CHECK='first-boot/00-helper-download.sh first-boot/11-report.sh'
 
-# The helper's rule for a path in a manifest (recipe-run), as in bin/release.sh.
+# The helper's rule for a path in a manifest (recipe-run), as in bin/build-release.sh.
 part='[A-Za-z0-9_][A-Za-z0-9._-]*'
 path_name="^$part(/$part)*\$"
 

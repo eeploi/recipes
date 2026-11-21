@@ -1,175 +1,211 @@
 #!/usr/bin/env bash
-# Builds a release from its tag, not from the working copy: the package (the files a server runs,
-# as a tar.gz) and a manifest per provider and Ubuntu release, in dist/VERSION/. Signs nothing: it
-# prints the manifests to sign with the recipes key (RECIPES_KEY sets another key file).
-# With --verify it builds the same release again and changes nothing: dist/VERSION/ must hold
-# exactly those files, the same bytes, and a .minisig per manifest that verifies the bytes built
-# against minisign.pub, the recipes public key (RECIPES_PUB sets another, for tests).
-# Usage: bin/release.sh [--verify] VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.0 0.5.0 example
+# The one release command: checks, builds from the tag, signs with the recipes key, verifies,
+# publishes the GitHub release and checks what went up. It stops on the first failure.
+# Run it yourself, in your own terminal: minisign asks for the key password, which is never
+# stored, passed in or logged. Releases are immutable: step 5 asks before it publishes.
+# --check runs step 1 only: no key, no build, nothing published.
+# The secret key is ~/.minisign/eeploi-recipes.key, or RECIPES_KEY when set; its public key must
+# be next to it (.pub) and the same as minisign.pub.
+# Usage: bin/release.sh [--check] VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.3 1.1.0 example
 set -euo pipefail
-export LC_ALL=C # the name rules below match ASCII only, as the helper's
+export LC_ALL=C
 cd "$(dirname "$0")/.."
-key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
-pub=${RECIPES_PUB:-minisign.pub}
-verify=
-[ "${1:-}" != --verify ] || { verify=1; shift; }
 
-[ "$#" -ge 3 ] || { echo "Usage: bin/release.sh [--verify] VERSION MIN_HELPER PROVIDER..." >&2; exit 2; }
+REPO=eeploi/recipes
+HELPER_REPO=eeploi/helper
+STEPS=6
+key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
+check_only=
+[ "${1:-}" != --check ] || { check_only=1; shift; }
+usage="Usage: bin/release.sh [--check] VERSION MIN_HELPER PROVIDER..."
+[ "$#" -ge 3 ] || { echo "$usage" >&2; exit 2; }
 version=$1
 min_helper=$2
 shift 2
+providers=("$@")
 semver='^[0-9]+\.[0-9]+\.[0-9]+$'
-[[ "$version" =~ $semver ]] || { echo "$version is no version, such as 0.4.0" >&2; exit 2; }
-[[ "$min_helper" =~ $semver ]] || { echo "$min_helper is no helper version, such as 0.5.0" >&2; exit 2; }
-provider_name='^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$'   # the helper's rule (recipe-run)
-part='[A-Za-z0-9_][A-Za-z0-9._-]*'
-path_name="^$part(/$part)*\$"   # the helper's rule for a path in a manifest (recipe-run)
-for provider; do
+[[ "$version" =~ $semver ]] || { echo "$version is no version, such as 0.4.3" >&2; exit 2; }
+[[ "$min_helper" =~ $semver ]] || { echo "$min_helper is no helper version, such as 1.1.0" >&2; exit 2; }
+provider_name='^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$' # the helper's rule, as bin/build-release.sh
+for provider in "${providers[@]}"; do
   [[ "$provider" =~ $provider_name ]] || { echo "$provider is no provider name: a-z, 0-9 and inner -, at most 32" >&2; exit 2; }
 done
 tag=v$version
-git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag is no tag" >&2; exit 1; }
+title="eeploi-recipes $version"
 out=dist/$version
-if [ -n "$verify" ]; then
-  command -v minisign >/dev/null || { echo "minisign is not installed" >&2; exit 1; }
-  [ -f "$pub" ] || { echo "no public key at $pub" >&2; exit 1; }
-  if [ ! -d "$out" ] || [ -L "$out" ]; then echo "$out is no folder: build it first" >&2; exit 1; fi
-else
-  [ ! -e "$out" ] || { echo "$out exists" >&2; exit 1; }
-fi
 
-# Built in $tmp/out and moved to $out at the end, so a run that fails leaves nothing half built.
-# With --verify it is only compared with $out.
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-build=$tmp/out
-mkdir "$build" "$tmp/tree"
-git archive "$tag" | tar -x -C "$tmp/tree"
-# The manifest takes its file names and values from these. bash drops a NUL when it reads a line,
-# here and in the helper, so a NUL in them would change a name or value unseen. Then every path
-# the manifest will hold, before bin/check-layout.sh reads them.
-for file in "$tmp"/tree/ubuntu-*/steps "$tmp/tree/markers"; do
-  [ -f "$file" ] || { echo "${file#"$tmp/tree/"} is not in $tag" >&2; exit 1; }
-  # shellcheck disable=SC2094 # both only read it
-  tr -d '\000' < "$file" | cmp -s - "$file" || { echo "${file#"$tmp/tree/"} in $tag holds a NUL" >&2; exit 1; }
-done
-path_ok() { [[ "$1" =~ $path_name ]] || { echo "$1 is no path the helper takes: each part $part" >&2; exit 1; }; }
-for list in "$tmp"/tree/ubuntu-*/steps; do
-  path_ok "$(basename "$(dirname "$list")")/php-source.sh"
-  while IFS= read -r file || [ -n "$file" ]; do
-    case "$file" in '' | '#'*) continue ;; esac
-    path_ok "$file"
-  done < "$list"
-done
-"$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
-
-# The release tags up to this one, in version order.
-tags=()
-while IFS= read -r t; do
-  [[ "$t" =~ ^v${semver#^} ]] || continue
-  tags+=("$t")
-  [ "$t" != "$tag" ] || break
-done < <(git tag -l 'v*' --sort=v:refname)
-
-# The release a file came in, and the first release since which it is the same as in this one.
-versions() {
-  local now t blob introduced='' changed=''
-  now=$(git rev-parse "$tag:$1")
-  for t in "${tags[@]}"; do
-    blob=$(git rev-parse -q --verify "$t:$1") || blob=''
-    if [ -n "$blob" ] && [ -z "$introduced" ]; then introduced=${t#v}; fi
-    if [ "$blob" != "$now" ]; then changed=''; elif [ -z "$changed" ]; then changed=${t#v}; fi
-  done
-  echo "$introduced $changed"
+step=0
+published=
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+fail() {
+  echo "release: $*" >&2
+  if [ -n "$published" ]; then
+    echo "Stopped at step $step of $STEPS: $tag may be published, or left as a draft. Look: gh release list -R $REPO" >&2
+  elif [ "$step" -gt 0 ]; then
+    echo "Stopped at step $step of $STEPS: nothing was published." >&2
+  fi
+  exit 1
+}
+begin() { step=$((step + 1)); printf '\nStep %s of %s: %s\n' "$step" "$STEPS" "$1"; }
+ok() { echo "  ✓ $*"; }
+# Any other command that fails stops here too, with the step it stopped at.
+trap 'fail "line $LINENO failed"' ERR
+# key_id <public key file>: its key id as minisign prints it. In the base64 of line 2, bytes 3 to 10
+# are the id, lowest byte first.
+key_id() {
+  local bytes id='' i
+  read -ra bytes < <(sed -n 2p "$1" | base64 -d 2>/dev/null | od -An -tx1 -j2 -N8)
+  for ((i = ${#bytes[@]} - 1; i >= 0; i--)); do id+=${bytes[i]}; done
+  tr a-f A-F <<< "$id"
+}
+# remote_tag: the commit of $tag on GitHub, a plain tag or not, or nothing.
+remote_tag() {
+  git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" |
+    awk -v t="refs/tags/$tag^{}" 'NR == 1 { plain = $1 } $2 == t { peeled = $1 } END { print (peeled != "" ? peeled : plain) }'
+}
+# gh_has <path>: true when GitHub has it, false when not (404); anything else stops.
+gh_has() {
+  gh api "$1" --silent 2>"$work/api" && return
+  grep -q 'HTTP 404' "$work/api" || fail "GitHub did not answer for $1: $(cat "$work/api")"
+  return 1
+}
+# release_exists: a release for $tag, a draft too (the tag lookup doesn't find drafts).
+release_exists() {
+  local ids
+  ids=$(gh api "repos/$REPO/releases?per_page=100" --paginate --jq ".[] | select(.tag_name == \"$tag\") | .id") ||
+    fail "GitHub did not list the releases of $REPO"
+  [ -n "$ids" ]
+}
+# tag_list local|remote: each v* tag and its commit, sorted. The build reads every v* tag for
+# the versions in the manifest, so they must be GitHub's.
+tag_list() {
+  if [ "$1" = local ]; then
+    git for-each-ref --format='%(refname)' 'refs/tags/v*' | while IFS= read -r ref; do
+      echo "${ref#refs/tags/} $(git rev-parse "$ref^{commit}")"
+    done
+  else
+    git ls-remote --tags origin 'v*' | awk '{ sub("^refs/tags/", "", $2) }
+      $2 ~ /\^\{\}$/ { sub("\\^\\{\\}$", "", $2); peeled[$2] = $1; next } { plain[$2] = $1 }
+      END { for (t in plain) print t, (t in peeled ? peeled[t] : plain[t]) }'
+  fi | sort
 }
 
-sha() { sha256sum "$tmp/tree/$1" | cut -d' ' -f1; }
-
-paths=()
-for list in "$tmp"/tree/ubuntu-*/steps; do
-  os=$(basename "$(dirname "$list")")
-  # The steps in run order, then every other file a run reads.
-  body=$tmp/$os.body
-  files=()
-  checks=()
-  while IFS= read -r file || [ -n "$file" ]; do
-    case "$file" in '' | '#'*) continue ;; esac
-    name=${file##*/}
-    case "$name" in
-      [0-9][0-9]-*.sh)
-        read -r marker flags < <(awk -v f="$file" '$1 !~ /^#/ && $2 == f { print $1, ($3 == "" ? "-" : $3) }' "$tmp/tree/markers") ||
-          { echo "$file has no marker in markers" >&2; exit 1; }
-        echo "step $(sha "$file") $marker $(versions "$file") $flags $file"
-        [ ! -f "$tmp/tree/${file%.sh}.check.sh" ] || checks+=("${file%.sh}.check.sh")
-        paths+=("$file")
-        ;;
-      *) files+=("$file") ;;
-    esac
-  done < "$list" > "$body"
-  for file in "$os/php-source.sh" stack/fingerprint.sh; do
-    [ -f "$tmp/tree/$file" ] || { echo "$file is not in $tag" >&2; exit 1; }
-  done
-  for file in "${files[@]}" "${checks[@]}" "$os/php-source.sh" stack/fingerprint.sh; do
-    echo "file $(sha "$file") $file"
-    paths+=("$file")
-  done >> "$body"
-
-  for provider; do
-    {
-      echo 'format 1'
-      echo "release $version"
-      echo "target $provider $os"
-      echo "min-helper $min_helper"
-      cat "$body"
-    } > "$build/recipes-$version-$provider-$os.manifest"
-  done
+for cmd in git gh minisign base64 od; do
+  command -v "$cmd" >/dev/null || fail "$cmd is not installed"
 done
 
-# One package for every manifest: each file once, in a fixed order, so the same tag builds the same bytes.
-# Only plain files: the package would hold a link where the manifest has its target's SHA-256.
-sorted=()
-while IFS= read -r path; do sorted+=("$path"); done < <(printf '%s\n' "${paths[@]}" | LC_ALL=C sort -u)
-listed=0
-while read -r mode _ _ path; do
-  case "$mode" in 100644 | 100755) ;; *) echo "$path in $tag is no plain file (mode $mode)" >&2; exit 1 ;; esac
-  listed=$((listed + 1))
-done < <(git --literal-pathspecs ls-tree -r "$tag" -- "${sorted[@]}")
-[ "$listed" -eq "${#sorted[@]}" ] || { echo "git ls-tree lists $listed of ${#sorted[@]} files in $tag" >&2; exit 1; }
-git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted[@]}"
+# What the header shows, read first: nothing changes but the fetch of main.
+git fetch -q origin main
+branch=$(git branch --show-current)
+head=$(git rev-parse HEAD)
+clean=; [ -n "$(git status --porcelain)" ] || clean=1
+synced=; [ "$head" != "$(git rev-parse origin/main)" ] || synced=1
+tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+remote_tagged=$(remote_tag)
+helper_ok=; if gh_has "repos/$HELPER_REPO/releases/tags/v$min_helper"; then helper_ok=1; fi
+release_found=; if release_exists; then release_found=1; fi
+immutable_on=$(gh api "repos/$REPO/immutable-releases" --jq .enabled) || fail "GitHub did not say whether $REPO has immutable releases"
+tag_list local > "$work/tags.local"
+tag_list remote > "$work/tags.remote" || fail "could not list the tags on GitHub"
+pub_id=$(key_id minisign.pub)
+key_pub=${key%.key}.pub
+key_pub_id=; [ ! -f "$key_pub" ] || key_pub_id=$(key_id "$key_pub")
+oses=()
+[ -z "$tagged" ] || while IFS= read -r os; do oses+=("$os"); done < <(git ls-tree --name-only "$tag" | grep '^ubuntu-' || true)
 
-# What goes up is what this tag builds, and each signature is the recipes key's over those bytes.
-# minisign refuses a signature whose key id is not the public key's, so a manifest signed with
-# another key fails here, not on every server.
-# A link is refused too: what goes up would be its target. So is a legacy signature (algorithm Ed,
-# not the prehashed ED), which the helper refuses: in base64, ED and the next byte start RU[Q-T],
-# Ed RW. -H on minisign -V refuses it again.
-if [ -n "$verify" ]; then
-  { for f in "$build"/*; do echo "${f##*/}"; done; for f in "$build"/*.manifest; do echo "${f##*/}.minisig"; done; } | sort > "$tmp/want"
-  (cd "$out" && find . -mindepth 1 -maxdepth 1 | sed 's|^\./||' | sort) > "$tmp/have"
-  { comm -23 "$tmp/want" "$tmp/have" | sed 's/^/missing: /'; comm -13 "$tmp/want" "$tmp/have" | sed 's/^/not built: /'; } > "$tmp/diff"
-  [ ! -s "$tmp/diff" ] || { echo "$out holds other files than $tag builds, with a .minisig per manifest:" >&2; cat "$tmp/diff" >&2; exit 1; }
-  plain_file() { if [ ! -f "$1" ] || [ -L "$1" ]; then echo "$1 is no plain file" >&2; exit 1; fi; }
-  for f in "$build"/*; do
-    plain_file "$out/${f##*/}"
-    cmp -s "$f" "$out/${f##*/}" || { echo "$out/${f##*/} is not the file $tag builds" >&2; exit 1; }
-  done
-  for f in "$build"/*.manifest; do
-    sig=$out/${f##*/}.minisig
-    plain_file "$sig"
-    case $(sed -n 2p "$sig") in RU[Q-T]*) ;; *) echo "$sig is no prehashed signature (ED): sign without -l" >&2; exit 1 ;; esac
-    minisign -V -H -q -p "$pub" -m "$f" -x "$sig" || { echo "$sig does not verify the manifest $tag builds against $pub" >&2; exit 1; }
-  done
-  echo "Verified $tag ($(git rev-parse "$tag^{commit}")) in $out against $pub:"
-  [ "$pub" = minisign.pub ] || echo "NOT the recipes key in minisign.pub: RECIPES_PUB is set" >&2
+printf 'Recipes release %s\n' "$version"
+printf '  repo     %s, on %s, %s%s\n' "$REPO" "${branch:-no branch}" \
+  "$([ -n "$synced" ] && echo 'up to date' || echo 'NOT the same as GitHub')" "$([ -n "$clean" ] || echo ', uncommitted changes')"
+if [ -z "$tagged" ]; then
+  printf '  tag      %s does not exist\n' "$tag"
 else
-  mkdir -p dist
-  mv "$build" "$out"
-  echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
+  printf '  tag      %s = %s%s\n' "$tag" "$(git rev-parse --short "$tagged")" "$([ "$remote_tagged" = "$tagged" ] || echo ' (NOT on GitHub as that)')"
 fi
-ls -1 "$out"
-[ -z "$verify" ] || exit 0
-echo
-echo 'Sign each manifest with the recipes key:'
-for manifest in "$out"/*.manifest; do printf '  minisign -S -s %q -m %q\n' "$key" "$manifest"; done
-echo 'Then verify the release, and add the package, the manifests and their .minisig files to the GitHub release:'
-printf '  bin/release.sh --verify'; printf ' %q' "$version" "$min_helper" "$@"; echo
+printf '  helper   needs %s (%s)\n' "$min_helper" "$([ -n "$helper_ok" ] && echo 'released ✓' || echo 'NOT released')"
+printf '  targets  %s on %s\n' "${providers[*]}" "${oses[*]:-?}"
+printf '  key      %s (%s)\n' "${key/#$HOME/~}" "${key_pub_id:-no .pub next to it}"
+printf '  release  %s, titled %s\n' "$([ -z "$release_found" ] && echo new || echo 'EXISTS')" "$title"
+
+begin checks
+[ "$branch" = main ] || fail "not on main"
+[ -n "$clean" ] || fail "uncommitted changes"
+[ -n "$synced" ] || fail "main is not the same as GitHub's main: pull or push first"
+ok "on main at $(git rev-parse --short "$head"), clean, the same as GitHub"
+[ -n "$tagged" ] || fail "$tag is no tag here: fetch the tags, or tag the release commit first"
+[ "$remote_tagged" = "$tagged" ] || fail "$tag is not on GitHub as $(git rev-parse --short "$tagged") (GitHub: ${remote_tagged:-no such tag})"
+git merge-base --is-ancestor "$tagged" origin/main || fail "$tag is not on main"
+ok "$tag = $(git rev-parse --short "$tagged"), the same on GitHub, on main"
+diff "$work/tags.local" "$work/tags.remote" | sed -n 's/^</  here only or other:/p; s/^>/  GitHub only or other:/p' >&2 || true
+cmp -s "$work/tags.local" "$work/tags.remote" || fail "the v* tags here are not GitHub's (above): git fetch --tags, or remove a local one"
+ok "every v* tag the same as GitHub's"
+ci=$(gh run list -R "$REPO" --commit "$tagged" --workflow ci.yml --event push --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
+[ "$ci" = "completed success" ] || fail "CI on $tag is not green (${ci:-no run})"
+ok "CI on $tag green"
+[ -n "$helper_ok" ] || fail "no eeploi-helper release v$min_helper"
+ok "eeploi-helper v$min_helper released"
+[ "${#oses[@]}" -gt 0 ] || fail "$tag has no ubuntu-* folder"
+# The secret key's id can't be read without its password; its public key next to it must be
+# minisign.pub, and step 3 checks the signatures against minisign.pub.
+case "$key" in /*) ;; *) fail "RECIPES_KEY must be an absolute path: $key" ;; esac
+[ -f "$key" ] || fail "no secret key at $key (set RECIPES_KEY to use another)"
+[ -f "$key_pub" ] || fail "no public key at $key_pub next to the secret key"
+[ "$(sed -n 2p "$key_pub")" = "$(sed -n 2p minisign.pub)" ] || fail "$key_pub ($key_pub_id) is not minisign.pub ($pub_id)"
+ok "key $key_pub_id, the same as minisign.pub"
+[ -z "$release_found" ] || fail "$REPO already has a release $tag, maybe a draft: releases are immutable"
+ok "no release $tag yet, no draft either"
+[ "$immutable_on" = true ] || fail "$REPO does not have immutable releases on"
+ok "immutable releases on"
+[ ! -e "$out" ] || fail "$out exists from an earlier run: remove it first (rm -r $out)"
+ok "$out is free"
+if [ -n "$check_only" ]; then
+  printf '\nChecks passed. Nothing built or published (--check).\n'
+  exit 0
+fi
+[ -t 0 ] || fail "run this in your own terminal: minisign asks for the key password"
+
+begin build
+bin/build-release.sh "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' || fail "the build failed"
+ok "built from $tag"
+
+begin sign
+manifests=("$out"/*.manifest)
+for m in "${manifests[@]}"; do
+  echo "  ${m##*/}"
+  # Prehashed (ED), never -l: -H asks for it, also where it is not the default.
+  minisign -S -H -s "$key" -m "$m" || fail "minisign did not sign $m"
+done
+ok "${#manifests[@]} manifests signed"
+
+begin verify
+env -u RECIPES_PUB bin/build-release.sh --verify "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' || fail "the release does not verify"
+ok "verified against minisign.pub ($pub_id)"
+
+begin publish
+files=("$out"/*)
+printf '  %s\n' "${files[@]##*/}"
+read -r -p "  Publish these as $REPO $tag, \"$title\"? Releases are immutable: this can't be undone. [y/N] " answer || answer=
+[ "$answer" = y ] || fail "not published"
+# The folder or the tag can move while the question waits: check them again before anything goes up.
+[ "$(git rev-parse HEAD)" = "$head" ] || fail "the folder moved off $(git rev-parse --short "$head") since the checks: run it again"
+[ "$(remote_tag)" = "$tagged" ] || fail "$tag on GitHub changed since the checks"
+! release_exists || fail "a release $tag appeared since the checks"
+published=1 # from here a failure may leave a release
+gh release create "$tag" "${files[@]}" -R "$REPO" --verify-tag --title "$title" \
+  --notes "Signed with the recipes key $pub_id. Needs eeploi-helper $min_helper." || fail "gh release create failed"
+ok "published $tag"
+
+begin 'check after'
+mkdir "$work/down"
+gh release download "$tag" -R "$REPO" -D "$work/down" || fail "could not download $tag again"
+# The same checks as step 4, on what went up: the files a fresh build from the tag makes, and
+# signatures that verify against minisign.pub.
+env -u RECIPES_PUB RECIPES_DIR="$work/down" bin/build-release.sh --verify "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' ||
+  fail "the published release does not verify"
+IFS=$'\t' read -r got_title immutable < <(gh release view "$tag" -R "$REPO" --json name,isImmutable --jq '[.name, (.isImmutable | tostring)] | @tsv') ||
+  fail "could not read $tag back from GitHub"
+[ "$got_title" = "$title" ] || fail "the release is titled $got_title, not $title"
+[ "$immutable" = true ] || fail "the release $tag is not immutable"
+ok "the published files verify as in step 4, titled $title, immutable"
+
+printf '\nDone: %s, %s = %s, titled "%s".\n' "$REPO" "$tag" "$(git rev-parse --short "$tagged")" "$title"
