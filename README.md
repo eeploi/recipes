@@ -37,7 +37,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 10 | `stack/10-start.sh` | Starts the services, checks SSH listens on IPv4 |
 | 11 | `first-boot/11-report.sh` | Sends the host keys to eeploi, every 30 seconds until eeploi takes or refuses them |
 
-`php-source.sh` adds the ondrej PPA as a fixed source, with its key (14AA40EC0831756756D7F66C4F4EA0AAE5267A6C) pinned, so a first boot needs no Launchpad API.
+`php-source.sh` adds packages.sury.org/php (Ondřej Surý) as a fixed source for another PHP than Ubuntu's own (8.3 and 8.4 on 26.04), with its signing key (15058500A0235D97F5D10063B188E2B695BD4743) pinned, and removes the Launchpad PPA, which has no builds for 26.04.
 
 `stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the reports to eeploi and the values. Nor is `stack/fingerprint.sh` (Fingerprint), which is not part of a server's script.
 
@@ -75,13 +75,14 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   In a fresh Ubuntu 26.04 container, each `always` step runs twice as the helper runs it, leaves `/etc` the same on the second run, fails no unit, and passes its check.
   Each check is read-only, and where `ci.yml` tests it, fails without what its step writes.
   The fingerprint prints only known facts.
-- **`server`**: a whole server, built as eeploi builds one, passes the helper's own `recipe-run`.
+- **`server`**: a whole server, built as eeploi builds one, passes the helper's own `recipe-run`, with Ubuntu's own PHP and with a PHP from packages.sury.org.
   The helper is the release CI pins, with only its recipes key and its release address changed for a test key and a local server.
   `recipe-run` on a release built in CI ends `result ok` twice, the second time with every step the same, and fails when a check fails.
   npm, as the deploy user runs it, prints no warning and no update notice.
   The settings SSH runs with, after every drop-in, are step 4's.
   ssh-audit reports on SSH's crypto, a report only.
-  Last, Lynis audits that server: its hardening index, warnings and suggestions go to the job summary and the report is kept, a report only, never a failure.
+  The PHP source's pinned key is the one apt checks it with.
+  Last, Lynis audits the server with Ubuntu's PHP: its hardening index, warnings and suggestions go to the job summary and the report is kept, a report only, never a failure.
 
 A CI change updates the comments in `ci.yml`. This section changes only when what a job guarantees changes.
 

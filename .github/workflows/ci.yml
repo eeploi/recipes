@@ -400,10 +400,16 @@ jobs:
   # every step and check of the release runs as on a live server, with the helper's PATH and clean
   # environment, and the run must end "result ok", twice. The helper is release HELPER_TAG, with a
   # test key for the recipes key and a local HTTPS server for GitHub's releases: those two lines only.
+  # Twice: with Ubuntu's own PHP, and with a PHP from packages.sury.org, so its pinned key is tested.
   server:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.5', '8.4']
     env:
       GH_TOKEN: ${{ github.token }}
+      RENDER_PHP: ${{ matrix.php }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -445,7 +451,7 @@ jobs:
       # logrotate.
       # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
       # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
-      # Then the script printed to run by hand, as eeploi renders it, with Ubuntu's own PHP.
+      # Then the script printed to run by hand, as eeploi renders it, with the matrix's PHP.
       - name: server, built
         run: |
           docker build --build-arg UBUNTU_IMAGE -t server - <<'DOCKERFILE'
@@ -455,7 +461,7 @@ jobs:
                 openssh-server sudo kmod iproute2 logrotate python3 openssl ca-certificates
           CMD ["/sbin/init"]
           DOCKERFILE
-          docker run -d --name server --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \
+          docker run -d --name server -e RENDER_PHP --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \
             -v "$PWD:/recipes:ro" -v "$RUNNER_TEMP/helper/ci:/helper:ro" -v "$RUNNER_TEMP/www:/www:ro" \
             -v /lib/modules:/lib/modules:ro -w /recipes server
           timeout 120 bash -c 'until docker exec server systemctl is-system-running 2>/dev/null | grep -qE "^(running|degraded)$"; do sleep 2; done'
@@ -473,7 +479,7 @@ jobs:
             echo "deploy ALL=(root) NOPASSWD: /usr/local/sbin/eeploi-helper" > /etc/sudoers.d/eeploi
             chmod 440 /etc/sudoers.d/eeploi
             visudo -cqf /etc/sudoers.d/eeploi
-            RENDER_PHP=8.5 bin/render.sh --no-first-boot > /root/by-hand.sh
+            bin/render.sh --no-first-boot > /root/by-hand.sh
             bash /root/by-hand.sh'
 
       # The release served over HTTPS on localhost, with a certificate the server trusts.
@@ -544,6 +550,7 @@ jobs:
 
       # ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
       - name: server, ssh-audit report
+        if: matrix.php == '8.5'
         continue-on-error: true
         run: |
           docker exec server bash -euc '
@@ -569,7 +576,7 @@ jobs:
         run: |
           docker exec server bash -euc '
             npmrc=/usr/local/lib/node_modules/npm/npmrc
-            RENDER_PHP=8.5 bin/render.sh --check ubuntu-26.04/01-packages.sh > /root/check
+            bin/render.sh --check ubuntu-26.04/01-packages.sh > /root/check
             cp "$npmrc" /root/npmrc
             echo globalignorefile=/etc/npmignore >> "$npmrc"
             if bash /root/check; then echo "check passed with globalignorefile"; exit 1; fi
@@ -582,11 +589,33 @@ jobs:
             cp /root/npmrc "$npmrc"
             bash /root/check'
 
+      # With a PHP from packages.sury.org, step 1's check fails on another key, another source line,
+      # no source, no key, and the Launchpad PPA's key or source back.
+      - name: server, the PHP source check
+        if: matrix.php != '8.5'
+        run: |
+          docker exec server bash -euc '
+            key=/etc/apt/keyrings/sury-php.asc src=/etc/apt/sources.list.d/sury-php.sources
+            bin/render.sh --check ubuntu-26.04/01-packages.sh > /root/check
+            bash /root/check
+            cp "$key" "$src" /root/
+            fails() { if bash /root/check > /dev/null 2>&1; then echo "check passed with $1"; exit 1; fi; cp /root/sury-php.asc "$key"; cp /root/sury-php.sources "$src"; }
+            echo >> "$key"; fails "another key"
+            sed -i "s|^URIs: .*|URIs: https://mirror.example/php|" "$src"; fails "another source"
+            rm "$src"; fails "no source"
+            rm "$key"; fails "no key"
+            touch /etc/apt/keyrings/ondrej.asc; fails "the PPA key"; rm /etc/apt/keyrings/ondrej.asc
+            touch /etc/apt/trusted.gpg.d/ondrej-ubuntu-php.gpg; fails "the PPA key in trusted.gpg.d"; rm /etc/apt/trusted.gpg.d/ondrej-ubuntu-php.gpg
+            touch /etc/apt/sources.list.d/ondrej-ubuntu-php-resolute.sources; fails "the PPA source"
+            rm /etc/apt/sources.list.d/ondrej-ubuntu-php-resolute.sources
+            bash /root/check'
+
       # Lynis, last, on the server as the steps and recipe-run left it: a report to find what we
       # missed, never a gate. Ubuntu's own package, so nothing from Lynis is copied here. The
       # hardening index, the warnings and the suggestions go to the job summary, and the report
       # and log are kept as an artifact.
       - name: server, Lynis report
+        if: matrix.php == '8.5'
         continue-on-error: true
         run: |
           docker exec server bash -euc '
@@ -612,7 +641,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: server, keep the Lynis report
-        if: always()
+        if: always() && matrix.php == '8.5'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lynis

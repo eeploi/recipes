@@ -8,3 +8,14 @@ for program in /usr/local/bin/composer /usr/local/bin/npm; do
 done
 # The pinned npm's builtin config has no globalignorefile, and turns the update notice off, once.
 [ "$(grep -E '^[[:space:]]*(globalignorefile|update-notifier)[[:space:]]*=' /usr/local/lib/node_modules/npm/npmrc)" = 'update-notifier=false' ]
+# Another PHP than Ubuntu's own (8.5) comes from packages.sury.org: apt checks it with the key
+# php-source.sh pins (15058500A0235D97F5D10063B188E2B695BD4743), byte for byte, and the source is
+# that one. The Launchpad PPA's source and key are gone.
+if compgen -G '/etc/apt/sources.list.d/ondrej-ubuntu-php-*' >/dev/null || compgen -G '/etc/apt/trusted.gpg.d/ondrej-ubuntu-php*' >/dev/null \
+  || [ -e /etc/apt/keyrings/ondrej.asc ]; then
+  echo 'the Launchpad PPA is still a source' >&2; exit 1
+fi
+if [ "$PHP" != 8.5 ] || [ -e /etc/apt/sources.list.d/sury-php.sources ]; then
+  [ "$(sha256sum < /etc/apt/keyrings/sury-php.asc)" = '8d2fc1d4a291afb9f7e4cb2b6f263a73ca74107bc40bf5cfd6346acc31506f3d  -' ]
+  [ "$(cat /etc/apt/sources.list.d/sury-php.sources)" = "$(printf 'Types: deb\nURIs: https://packages.sury.org/php\nSuites: %s\nComponents: main\nSigned-By: /etc/apt/keyrings/sury-php.asc' "$VERSION_CODENAME")" ]
+fi
