@@ -106,6 +106,15 @@ jobs:
           rm "$d/extra"
           verify
 
+      # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper, read
+      # from its main until a helper release holds it.
+      - name: release, the recipes key is the helper's
+        run: |
+          helper=$(curl -fsS --retry 3 https://raw.githubusercontent.com/eeploi/helper/main/eeploi-helper)
+          key=$(sed -n "s/^RECIPES_PUBKEY='\(.*\)'\$/\1/p" <<< "$helper")
+          [ -n "$key" ] || { echo 'no RECIPES_PUBKEY in the helper'; exit 1; }
+          [ "$key" = "$(sed -n 2p minisign.pub)" ] || { echo "minisign.pub is not the helper's RECIPES_PUBKEY ($key)"; exit 1; }
+
       # A provider the helper would refuse is refused before anything else, with only its
       # message; the shortest and the longest names the helper takes, with a dash inside, build.
       - name: release, provider names
