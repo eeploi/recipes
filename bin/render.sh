@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Prints the script a server runs: the files in ubuntu-26.04/steps in order, an empty line between
 # each, with example values. For CI, so shellcheck sees the code as it runs. A {name} alone on a
-# line stands for lines eeploi renders itself and is left out here, except {php_source}, which
-# gets php-source.sh, and {real_ip}, which gets one range, so nginx takes the file.
+# line stands for lines eeploi renders itself and is left out here (an empty line), except
+# {php_source}, which gets php-source.sh, as for any other PHP than Ubuntu's.
+# RENDER_PHP sets the PHP version, 8.4 by default; Ubuntu 26.04's own, 8.5, leaves out
+# php-source.sh, as eeploi does.
 # Usage: bin/render.sh [--no-first-boot | --checks | --step FILE | --check FILE]
 #   --checks        the values, then the check of each step, each on its own, as one script
 #   --step FILE     start.sh, the values and that one step, to run on its own (bin/run-twice.sh),
@@ -16,18 +18,22 @@ step=${2:-}
 case "$mode" in --step | --check) [ -f "$step" ] || { echo "$mode needs a step file" >&2; exit 2; } ;; esac
 
 left=0
+php=${RENDER_PHP:-8.4}
+[[ $php =~ ^[0-9]\.[0-9]$ ]] || { echo "RENDER_PHP is no PHP version: $php" >&2; exit 2; }
+php_source=ubuntu-26.04/php-source.sh
+[ "$php" != 8.5 ] || php_source=/dev/null
 
 # The values the helper fills on a live server, the only ones in --step. bin/check-layout.sh
 # renders each always step with --step, so this is the one list of them.
-helper_values='s/\{user\}/deploy/g; s/\{port\}/10022/g; s/\{php\}/8.4/g; s/\{version\}/26.04/g; s/\{name\}/shop.example/g'
+helper_values="s/\{user\}/deploy/g; s/\{port\}/10022/g; s/\{php\}/$php/g; s/\{version\}/26.04/g; s/\{name\}/shop.example/g"
 
 render() {
   local out
   if [ "$mode" = --step ]; then
     out=$(sed -E -e "$helper_values" "$1")
   else
-    out=$(sed -E -e '/^\{php_source\}$/{' -e 'r ubuntu-26.04/php-source.sh' -e 'd' -e '}' "$1" | sed -E \
-      -e 's/^\{real_ip\}$/set_real_ip_from 192.0.2.0\/24;/' -e 's/^\{[a-z_]+\}$/:/' -e "$helper_values" \
+    out=$(sed -E -e '/^\{php_source\}$/{' -e "r $php_source" -e 'd' -e '}' "$1" | sed -E \
+      -e 's/^\{[a-z_]+\}$//' -e "$helper_values" \
       -e 's/\{report_url\}/https:\/\/eeploi.example\/report/g' \
       -e 's/\{ranges\}/192.0.2.0\/24 198.51.100.0\/24/g; s/\{database\}/mariadb-server/g; s/\{npm\}/11.21.3/g' \
       -e 's/\{helper_path\}/\/usr\/local\/bin\/eeploi-helper/g; s/\{codename\}/resolute/g')

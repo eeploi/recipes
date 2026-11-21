@@ -9,6 +9,9 @@ cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# A step or check runs as the helper runs it (recipe-run): from /, with its PATH and a clean environment.
+as_helper() { (cd / && exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LC_ALL=C TMPDIR=/tmp bash "$1") < /dev/null; }
+
 failed() { systemctl list-units --state=failed --plain --no-legend | awk '{ print $1 }' | LC_ALL=C sort; }
 
 fail=0
@@ -20,7 +23,7 @@ while read -r file; do
   fi
   failed > "$tmp/failed.before"
   for run in 1 2; do
-    if ! bash "$tmp/step" < /dev/null; then
+    if ! as_helper "$tmp/step"; then
       echo "$file: run $run failed"
       fail=1
       continue 2
@@ -34,7 +37,7 @@ while read -r file; do
   elif ! diff "$tmp/etc.1" "$tmp/etc.2"; then
     echo "$file: the second run changed /etc"
     fail=1
-  elif bash "$tmp/check" < /dev/null; then
+  elif as_helper "$tmp/check"; then
     echo "$file: twice, check ok"
   else
     echo "$file: check failed after two runs"
