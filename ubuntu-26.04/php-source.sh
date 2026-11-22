@@ -1,3 +1,4 @@
+# D-5: another PHP than Ubuntu's comes from packages.sury.org. D-12: its key expires 2028-02-04.
 # Another PHP than Ubuntu's own: packages.sury.org/php (Ondřej Surý) as a fixed source, with its
 # signing key pinned, 15058500A0235D97F5D10063B188E2B695BD4743 (RSA 3072, from
 # https://packages.sury.org/php/apt.gpg). It replaces the Launchpad PPA, which step 1 removes.

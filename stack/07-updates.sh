@@ -5,6 +5,7 @@ STEP='7. Updates and kernel hardening'
 # release pocket in it too) and any origin pattern, so security updates only is what is set: Ubuntu's
 # security pocket and Ubuntu Pro's two security pockets (ESM), which do nothing on a server without
 # Pro and bring universe's security fixes on one with it.
+# D-6: security updates only, and every update of a sury.org PHP.
 # A PHP from packages.sury.org (another PHP than Ubuntu's, php-source.sh) gets its updates too: a
 # deliberate exception to security updates only. sury.org has no security channel of its own, and
 # PHP's security fixes only come as point releases. A server with Ubuntu's PHP doesn't get it.

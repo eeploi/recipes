@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The one release command: checks, builds from the tag, signs with the recipes key, verifies,
 # publishes the GitHub release and checks what went up. It stops on the first failure.
+# D-2: signed in the maintainer's own terminal, never unattended.
 # Run it yourself, in your own terminal: minisign asks for the key password, which is never
 # stored, passed in or logged. Releases are immutable: step 5 asks before it publishes.
 # --check runs step 1 only: no key, no build, nothing published.

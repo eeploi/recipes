@@ -51,5 +51,6 @@ NGINX
 ln -sfn /etc/nginx/sites-available/catch-all /etc/nginx/sites-enabled/catch-all
 # A running nginx takes the config now; a stopped one stays stopped.
 nginx -t || nginx_refused 'nginx refuses its config, it is as it was'
+# D-13: a reload nginx takes, then rejects, isn't caught here.
 systemctl try-reload-or-restart nginx || nginx_refused 'nginx did not reload, its config is as it was'
 rm -rf "$nginx_prev"

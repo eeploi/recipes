@@ -144,6 +144,7 @@ git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted
 # What goes up is what this tag builds, and each signature is the recipes key's over those bytes.
 # minisign refuses a signature whose key id is not the public key's, so a manifest signed with
 # another key fails here, not on every server.
+# D-1: prehashed signatures only.
 # A link is refused too: what goes up would be its target. So is a legacy signature (algorithm Ed,
 # not the prehashed ED), which the helper refuses: in base64, ED and the next byte start RU[Q-T],
 # Ed RW. -H on minisign -V refuses it again.

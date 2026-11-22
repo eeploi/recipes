@@ -1,6 +1,7 @@
 # 1. Packages: nginx, PHP and Node from Ubuntu's own archive, a pinned npm on top. Only another
 #    PHP version than Ubuntu's adds packages.sury.org, as a fixed source with a pinned key.
 STEP='1. Packages'
+# D-5: Ubuntu's PHP, or another one from packages.sury.org.
 # The Launchpad PPA an older release added has no builds for new Ubuntu releases: its source and
 # key go, whatever the PHP.
 rm -f /etc/apt/keyrings/ondrej.asc /etc/apt/trusted.gpg.d/ondrej-ubuntu-php.gpg /etc/apt/trusted.gpg.d/ondrej-ubuntu-php.gpg~ \

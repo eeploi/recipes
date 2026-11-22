@@ -2,7 +2,8 @@
 # Checks the repo layout: every file in ubuntu-*/steps has a path the helper takes, exists and is no
 # link, and every step in it sets STEP=, has its .check.sh next to it, has one marker in markers
 # and is in the README table.
-# An always step holds only the values the helper fills (bin/render.sh --step).
+# An always step holds only the values the helper fills (bin/render.sh --step). Every D-n a comment
+# names is an entry in DECISIONS.md, numbered in order.
 set -uo pipefail
 export LC_ALL=C # the path rule below matches ASCII only, as the helper's
 cd "$(dirname "$0")/.." || exit 1
@@ -78,6 +79,18 @@ while read -r marker file flags rest || [ -n "$marker" ]; do
     bad "$file" "is always, and holds a value the helper does not fill"
   fi
 done < markers
+
+# DECISIONS.md numbers its entries D-1, D-2 … in order, each once, and every D-n a comment in a
+# script or workflow names is one of them.
+n=0
+while read -r id; do
+  n=$((n + 1))
+  [ "$id" = "D-$n" ] || bad DECISIONS.md "$id where D-$n comes"
+done < <(sed -n 's/^## \(D-[0-9]*\): .*/\1/p' DECISIONS.md)
+while IFS=: read -r file line id; do
+  grep -q "^## $id: " DECISIONS.md || bad "$file:$line" "$id is not in DECISIONS.md"
+done < <(git ls-files -z '*.sh' '*.yml' | xargs -0 grep -noE '(^|[^A-Za-z0-9_-])D-[0-9]+:' \
+  | sed -E 's/:[^:]*(D-[0-9]+):$/:\1/')
 
 [ "$fail" -eq 0 ] && echo "layout ok"
 exit "$fail"

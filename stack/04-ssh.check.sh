@@ -2,6 +2,7 @@
 sshd -t
 # The settings sshd reads, after every drop-in: no later file turns password login or forwarding
 # back on, or lets another user in. sshd -T prints each setting in lower case.
+# D-11: sshd -T reads the config on disk, not the running sshd.
 ssh_settings=$(sshd -T)
 [ "$(grep '^port ' <<< "$ssh_settings")" = "port $SSH_PORT" ]
 [ "$(grep '^allowusers ' <<< "$ssh_settings")" = "allowusers $DEPLOY_USER" ]
