@@ -570,8 +570,9 @@ jobs:
             bash /root/ssh-check'
 
       # PHP-FPM's stock [www] pool listens on a socket only root may open, and step 2's check passes.
-      # Then it fails, with its own message, on each [www] setting turned back (pm static: with two workers, dynamic is no valid pool) and on expose_php or
-      # session upload progress on again in a later conf.d file.
+      # Then it fails, with its own message, on each [www] setting turned back (pm static: with two
+      # workers, dynamic is no valid pool) and on expose_php or session upload progress on again in a
+      # later conf.d file.
       - name: server, the PHP check
         run: |
           docker exec server bash -euc '
