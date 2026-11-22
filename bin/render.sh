@@ -2,7 +2,8 @@
 # Prints the script a server runs: the files in ubuntu-26.04/steps in order, an empty line between
 # each, with example values. For CI, so shellcheck sees the code as it runs. A {name} alone on a
 # line stands for lines eeploi renders itself and is left out here (an empty line), except
-# {php_source}, which gets php-source.sh, as for any other PHP than Ubuntu's.
+# {php_source}, which gets php-source.sh, as for any other PHP than Ubuntu's, and {real_ip}, which
+# gets one Cloudflare range line, with a documentation range.
 # RENDER_PHP sets the PHP version, 8.4 by default; Ubuntu 26.04's own, 8.5, leaves out
 # php-source.sh, as eeploi does.
 # Usage: bin/render.sh [--no-first-boot | --checks | --step FILE | --check FILE]
@@ -33,7 +34,7 @@ render() {
     out=$(sed -E -e "$helper_values" "$1")
   else
     out=$(sed -E -e '/^\{php_source\}$/{' -e "r $php_source" -e 'd' -e '}' "$1" | sed -E \
-      -e 's/^\{[a-z_]+\}$//' -e "$helper_values" \
+      -e 's/^\{real_ip\}$/set_real_ip_from 192.0.2.0\/24;/' -e 's/^\{[a-z_]+\}$//' -e "$helper_values" \
       -e 's/\{report_url\}/https:\/\/eeploi.example\/report/g' \
       -e 's/\{ranges\}/192.0.2.0\/24 198.51.100.0\/24/g; s/\{database\}/mariadb-server/g; s/\{npm\}/11.21.3/g' \
       -e 's/\{helper_path\}/\/usr\/local\/sbin\/eeploi-helper/g; s/\{codename\}/resolute/g')

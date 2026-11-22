@@ -8,5 +8,7 @@ if grep -q 'ssl_certificate' /etc/nginx/sites-available/catch-all || [ -e /etc/n
   echo 'the catch-all still has a certificate' >&2; exit 1
 fi
 [ -d /etc/nginx/ssl ]
+# No old config left aside: a run that was cut off leaves one.
+[ ! -e /etc/nginx/eeploi.prev ] || { echo 'an old nginx config is left aside (/etc/nginx/eeploi.prev)' >&2; exit 1; }
 # nginx accepts its config.
 nginx -t

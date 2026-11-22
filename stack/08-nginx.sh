@@ -1,10 +1,28 @@
-# 8. nginx: real visitor IPs from Cloudflare, room for large headers, no default site, a catch-all that
-#    refuses the TLS handshake for unknown hosts
+# 8. nginx: room for large headers, no default site, a catch-all that refuses the TLS handshake for
+#    unknown hosts; the old config comes back when nginx refuses the new one
 STEP='8. nginx'
-cat > /etc/nginx/conf.d/cloudflare.conf <<'NGINX'
-{real_ip}
-real_ip_header CF-Connecting-IP;
-NGINX
+# The files this step changes stay aside until nginx takes the new config, and come back if it
+# doesn't: a live server keeps serving its sites. A copy left aside by a run that was cut off is the
+# old config, so it stays.
+nginx_files='/etc/nginx/conf.d/eeploi-fastcgi.conf /etc/nginx/sites-enabled/default
+/etc/nginx/sites-available/catch-all /etc/nginx/sites-enabled/catch-all /etc/nginx/ssl/catch-all.crt
+/etc/nginx/ssl/catch-all.key'
+nginx_prev=/etc/nginx/eeploi.prev
+if [ ! -d "$nginx_prev" ]; then
+  rm -rf "$nginx_prev.new"
+  mkdir "$nginx_prev.new"
+  for f in $nginx_files; do
+    [ ! -e "$f" ] && [ ! -L "$f" ] || cp -a --parents "$f" "$nginx_prev.new"
+  done
+  mv "$nginx_prev.new" "$nginx_prev"
+fi
+nginx_restore() {
+  for f in $nginx_files; do
+    rm -f "$f"
+    [ ! -e "$nginx_prev$f" ] && [ ! -L "$nginx_prev$f" ] || cp -a "$nginx_prev$f" "$f"
+  done
+  rm -rf "$nginx_prev"
+}
 # The security policy and Vite's preload Link headers outgrow nginx's default 4k buffer: a 502.
 cat > /etc/nginx/conf.d/eeploi-fastcgi.conf <<'NGINX'
 fastcgi_buffer_size 32k;
@@ -23,4 +41,16 @@ server {
 }
 NGINX
 ln -sfn /etc/nginx/sites-available/catch-all /etc/nginx/sites-enabled/catch-all
-nginx -t
+# A running nginx takes the config now; a stopped one stays stopped.
+if ! nginx -t; then
+  nginx_restore
+  echo 'nginx refuses its config, it is as it was' >&2
+  exit 1
+fi
+if ! systemctl try-reload-or-restart nginx; then
+  nginx_restore
+  systemctl try-reload-or-restart nginx || true
+  echo 'nginx did not reload, its config is as it was' >&2
+  exit 1
+fi
+rm -rf "$nginx_prev"
