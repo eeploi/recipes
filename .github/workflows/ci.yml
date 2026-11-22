@@ -397,8 +397,7 @@ jobs:
 
       # eeploi's addresses (D-22, D-23), in a copy of the repo with {trusted_ips} filled in. Twice
       # with two addresses: both jails ignore them, each jail still ignores what it did before, and
-      # the second run changes nothing. A second list in a file of its own adds itself with
-      # %(known/ignoreip)s: both are ignored. A changed list replaces that file only, and the old
+      # the second run changes nothing. A changed list replaces that file only, and the old
       # address is ignored by no jail; an empty list is valid. A range, a host name, /128 on IPv4,
       # IPv4 written as IPv6 and a broken jail elsewhere are refused, and the file stays as it was.
       # The check fails with a range, a line more or a blank line more in the file, another mode,
@@ -432,12 +431,6 @@ jobs:
             has 2001:db8::10
             # What was ignored before is still ignored.
             [ -z "$(comm -23 /tmp/ignored.before /tmp/ignored.after)" ]
-            printf "[DEFAULT]\nignoreip = %%(known/ignoreip)s 198.51.100.7\n" > /etc/fail2ban/jail.d/owner.conf
-            fail2ban-client reload
-            has 203.0.113.10
-            has 198.51.100.7
-            rm /etc/fail2ban/jail.d/owner.conf
-            fail2ban-client reload
             step "203.0.113.11"
             bin/etc-state.sh > /tmp/etc.3
             changed=$(diff /tmp/etc.2 /tmp/etc.3 | grep "^[<>]" | grep -v " $f\( \|$\)" || true)

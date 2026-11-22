@@ -19,8 +19,8 @@ for n, a in enumerate(sys.argv[1:], 1):
 # left aside by a run that was cut off is that old file, so it stays.
 [ -f "$jail.prev" ] || [ ! -f "$jail" ] || cp -a "$jail" "$jail.prev"
 # Under [DEFAULT], so every jail ignores them, recidive too: localhost, as fail2ban's own default,
-# then the list. Another list in a file of its own adds itself with %(known/ignoreip)s. Written
-# aside and moved in, so a run cut off leaves no half file, and a link is replaced, not followed.
+# then the list. Written aside and moved in, so a run cut off leaves no half file, and a link is
+# replaced, not followed.
 printf '[DEFAULT]\nignoreip = 127.0.0.1/8 ::1%s\n' "${trusted[*]:+ ${trusted[*]}}" > "$jail.new"
 chmod 644 "$jail.new"
 mv -f "$jail.new" "$jail"
