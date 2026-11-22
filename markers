@@ -10,6 +10,7 @@ first-boot stack/03-sudo.sh
 first-boot stack/04-ssh.sh
 first-boot stack/05-firewall.sh
 always     stack/06-fail2ban.sh
+window     stack/06-fail2ban-trusted.sh
 always     stack/07-updates.sh
 window     stack/08-real-ip.sh
 always     stack/08-nginx.sh

@@ -395,6 +395,79 @@ jobs:
             bash <(bin/render.sh --check stack/06-fail2ban.sh)
             systemctl is-active fail2ban'
 
+      # eeploi's addresses (D-22, D-23), in a copy of the repo with {trusted_ips} filled in. Twice
+      # with two addresses: both jails ignore them, each jail still ignores what it did before, and
+      # the second run changes nothing. A changed list replaces that file only, and the old
+      # address is ignored by no jail; an empty list is valid. A range, a host name, /128 on IPv4,
+      # IPv4 written as IPv6 and a broken jail elsewhere are refused, and the file stays as it was.
+      # The check fails with a range, a line more or a blank line more in the file, another mode,
+      # or an old file left aside. Last, the step and its check pass again, for the checks below.
+      - name: fail2ban, eeploi's addresses
+        run: |
+          docker exec twice bash -euc '
+            . bin/helper-env.sh
+            f=/etc/fail2ban/jail.d/eeploi-trusted.conf
+            cp -a /recipes /tmp/trusted
+            step() {
+              sed "s|{trusted_ips}|$1|" /recipes/stack/06-fail2ban-trusted.sh > /tmp/trusted/stack/06-fail2ban-trusted.sh
+              (cd /tmp/trusted && bin/render.sh --step stack/06-fail2ban-trusted.sh) > /tmp/trusted-step
+              as_helper /tmp/trusted-step
+            }
+            bin/render.sh --check stack/06-fail2ban-trusted.sh > /tmp/trusted-check
+            check() { as_helper /tmp/trusted-check; }
+            ignored() { for j in sshd recidive; do fail2ban-client get $j ignoreip | sed -n "s/^[|\`]- /$j /p"; done | sort -u; }
+            # has ADDRESS: both jails ignore it. none ADDRESS: no jail does.
+            has() { for j in sshd recidive; do ignored | grep -qxF "$j $1" || return 1; done; }
+            none() { ! ignored | grep -q " $1\$"; }
+            ignored > /tmp/ignored.before
+            step "203.0.113.10 2001:db8::10/128"
+            check
+            bin/etc-state.sh > /tmp/etc.1
+            step "203.0.113.10 2001:db8::10/128"
+            bin/etc-state.sh > /tmp/etc.2
+            diff /tmp/etc.1 /tmp/etc.2
+            ignored > /tmp/ignored.after
+            has 203.0.113.10
+            has 2001:db8::10
+            # What was ignored before is still ignored.
+            [ -z "$(comm -23 /tmp/ignored.before /tmp/ignored.after)" ]
+            step "203.0.113.11"
+            bin/etc-state.sh > /tmp/etc.3
+            changed=$(diff /tmp/etc.2 /tmp/etc.3 | grep "^[<>]" | grep -v " $f\( \|$\)" || true)
+            [ -z "$changed" ] || { echo "$changed"; echo "a changed list changed more than its file"; exit 1; }
+            none 203.0.113.10 || { echo "the old address is still ignored"; exit 1; }
+            [ ! -e $f.new ]
+            check
+            step ""
+            [ "$(cat $f)" = "$(printf "[DEFAULT]\nignoreip = 127.0.0.1/8 ::1")" ]
+            check
+            step "203.0.113.10"
+            cp -a $f /tmp/trusted.conf
+            for bad in "203.0.113.0/24" "0.0.0.0/0" "2001:db8::/48" "203.0.113.10/128" "eeploi.example" "203.0.113.10,198.51.100.7" "::ffff:203.0.113.10"; do
+              if step "$bad" 2> /tmp/out; then echo "step passed with $bad"; exit 1; fi
+              grep -qxF "address 1 is not one IPv4 or IPv6 address, nothing changed" /tmp/out || { cat /tmp/out; exit 1; }
+              cmp $f /tmp/trusted.conf
+            done
+            echo "not a jail" > /etc/fail2ban/jail.d/broken.conf
+            if step "203.0.113.12"; then echo "step passed with a broken jail"; exit 1; fi
+            cmp $f /tmp/trusted.conf
+            [ ! -e $f.prev ]
+            rm /etc/fail2ban/jail.d/broken.conf
+            systemctl is-active fail2ban
+            fails() {
+              if check 2> /tmp/out; then echo "check passed with $1"; exit 1; fi
+              grep -qF "$2" /tmp/out || { cat /tmp/out; echo "check failed otherwise with $1"; exit 1; }
+              cp -a /tmp/trusted.conf $f
+            }
+            sed -i "2s|\$| 203.0.113.0/24|" $f; fails "a range" "address 2 is not one IPv4 or IPv6 address"
+            echo "ignoreself = false" >> $f; fails "a line more" "not the file the step writes"
+            echo >> $f; fails "a blank line more" "not the file the step writes"
+            chmod 666 $f; fails "mode 666" "not root:root 644"
+            cp -a $f $f.prev; fails "an old file left aside" "an old file is left aside"; rm $f.prev
+            step "203.0.113.10 2001:db8::10/128"
+            check
+            systemctl is-active fail2ban'
+
       # Step 8 with another nginx file broken: the step fails and leaves /etc as it was, the default
       # site and a changed catch-all included, and nginx running. A copy left aside by a run that was
       # cut off is what comes back. When nginx doesn't reload, the config comes back too. Then, with

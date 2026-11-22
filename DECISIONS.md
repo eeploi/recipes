@@ -188,3 +188,35 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Why:** a server checks a release against its signed manifest, by version. A version that can change would make that check, and every record of which release a server ran, worth nothing.
 - **Accepted:** a tag on the wrong commit, or a release published by mistake, stays. The next version replaces it.
 - **Where:** `bin/release.sh`
+
+## D-22: eeploi's own addresses are a step of their own
+
+- **Kind:** decision
+- **Decided:** 2026-11-22, #46
+- **What:** `eeploi-trusted.conf` (fail2ban's `ignoreip`, `{trusted_ips}`) is written by `stack/06-fail2ban-trusted.sh`, a `window` step. Step 6's jail file and its check stay as they are. The file sets `ignoreip` under `[DEFAULT]`, so every jail ignores the addresses, `recidive` too: localhost (`127.0.0.1/8 ::1`, fail2ban's own default), then the list. `%(known/ignoreip)s` doesn't work here: under `[DEFAULT]` in a `jail.d` file, fail2ban refuses it, also after another file's `ignoreip`.
+- **Why:** as D-15: eeploi fills in `{trusted_ips}` at the first boot, and an `always` step holds only the values the helper fills. A file per list shows on the server which address came from whom. Rejected: the list in `recipes.conf`, which needs a helper change and a new key there.
+- **Accepted:** an address in the list is never banned, by any jail, on any port.
+- **Where:** `stack/06-fail2ban-trusted.sh`
+
+## D-23: eeploi's list holds single addresses only
+
+- **Kind:** decision
+- **Decided:** 2026-11-22, #46
+- **What:** each entry is one address: IPv4 bare or `/32`, IPv6 bare or `/128`, and IPv4 never written as IPv6 (`::ffff:…`). A range, a host name or anything else is refused, by the step before it writes and by its check. An empty list is valid.
+- **Why:** a range in an ignore list switches fail2ban off for every address in it; `0.0.0.0/0` would switch it off entirely. eeploi's own addresses are single ones.
+- **Where:** `stack/06-fail2ban-trusted.sh`, `stack/06-fail2ban-trusted.check.sh`
+
+## D-24: A changed list reaches only a new server
+
+- **Kind:** known limit
+- **Decided:** 2026-11-22, #46
+- **What:** `stack/06-fail2ban-trusted.sh` is a `window` step. `recipe-run` runs only `always` steps, and the manual "update now" for `window` steps isn't built. A server keeps the list it got at its first boot. Run again with another list, the step replaces that file only.
+- **Why:** a way to change the list on a live server is a later design.
+- **Where:** `stack/06-fail2ban-trusted.sh`
+
+## D-25: One list of addresses fail2ban never bans
+
+- **Kind:** known limit
+- **Decided:** 2026-11-22, #46
+- **What:** fail2ban takes one `ignoreip` under `[DEFAULT]`, and a later file replaces it. A second list in a file of its own, such as the server owner's, can't add itself to eeploi's that way. How a second list gets in is open; none is built.
+- **Why:** fail2ban's `%(known/ignoreip)s` doesn't reach a value set in another `jail.d` file under `[DEFAULT]`.

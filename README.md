@@ -43,6 +43,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login, three tries, no forwarding but local (`ssh -L`, TCP and Unix sockets), Diffie-Hellman groups of 3072 bits and up (in `/etc/ssh/eeploi-moduli`), no NIST curves or SHA-1 offered, host keys ed25519 and RSA |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
 | 6 | `stack/06-fail2ban.sh` | fail2ban for SSH: bans of 1 hour that double with each new ban within a day (capped at a week), and the recidive jail (five bans in a day: every port, a week); taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
+| 6 | `stack/06-fail2ban-trusted.sh` | eeploi's own addresses, one each, never banned by any jail (`/etc/fail2ban/jail.d/eeploi-trusted.conf`); the old file stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, Ubuntu's and Ubuntu Pro's (Ubuntu's own list of origins cleared), and every update of a PHP from packages.sury.org, services restarted after one, a package update keeps the config files eeploi changed, the SCTP, RDS and TIPC kernel modules blocked, no ICMP redirects taken or sent, martians logged (`/etc/sysctl.d/60-eeploi-network.conf`), no restart by Ctrl+Alt+Del (`ctrl-alt-del.target` masked, `CtrlAltDelBurstAction=none` in `/etc/systemd/system.conf.d/60-eeploi-ctrl-alt-del.conf`) |
 | 8 | `stack/08-real-ip.sh` | Real visitor IPs: nginx takes `CF-Connecting-IP` from Cloudflare's ranges (`/etc/nginx/conf.d/cloudflare.conf`) |
 | 8 | `stack/08-nginx.sh` | Room for large FastCGI headers, no default site, a catch-all that refuses the TLS handshake for unknown hosts; taken at once by a running nginx; the old config comes back when nginx refuses the new one or doesn't reload |
@@ -104,7 +105,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   nginx refuses the TLS handshake for an unknown host.
   The deploy user logs in with OpenSSH's client and a key, as eeploi does, and gets the ed25519 host key.
   ssh-audit reports on SSH's crypto, a report only.
-  Each probe, run twice as the helper runs it, leaves `/etc` the same, prints only `<key> <value>` lines and the lines expected, and never a secret planted in the config files or a banned IP.
+  Each probe, run twice as the helper runs it, leaves `/etc` the same, prints only `<key> <value>` lines and the lines expected, and never a secret planted in the config files, a banned IP or eeploi's own addresses.
   The PHP source's pinned key is the one apt checks it with.
   Last, Lynis audits the server with Ubuntu's PHP: its hardening index, warnings and suggestions go to the job summary and the report is kept, a report only, never a failure.
 
