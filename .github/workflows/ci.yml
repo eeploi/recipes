@@ -556,6 +556,32 @@ jobs:
             [ "$(tail -n 1 <<< "$out")" = "result failed" ]
             chmod +x /usr/local/bin/composer'
 
+      # Root's password, as the lock-root check sees it. At the first boot (no cloud-init
+      # boot-finished yet) a password set fails the run. After it, the run passes with a note, as
+      # after a Reset root password. No password at all fails, before and after.
+      - name: server, recipe-run with a root password
+        run: |
+          docker exec server bash -euc '
+            run() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper recipe-run 99.0.0 example 2>&1; }
+            fails() { if out=$(run); then echo "$out"; echo "recipe-run passed: $1"; exit 1; fi
+              grep -qxF "check failed first-boot/00-lock-root.check.sh" <<< "$out" || { echo "$out"; exit 1; }; }
+            note="note: root has a password (set after the first boot); root can'\''t log in over SSH"
+            echo root:ci-root-password | chpasswd
+            fails "a root password at the first boot"
+            install -d /var/lib/cloud/instance
+            touch /var/lib/cloud/instance/boot-finished
+            out=$(run) || { echo "$out"; echo "recipe-run failed with a root password after the first boot"; exit 1; }
+            echo "$out"
+            grep -qxF "$note" <<< "$out"
+            grep -qxF "check ok first-boot/00-lock-root.check.sh" <<< "$out"
+            passwd -q -d root
+            fails "no root password after the first boot"
+            rm /var/lib/cloud/instance/boot-finished
+            fails "no root password at the first boot"
+            passwd -q -l root
+            out=$(run) || { echo "$out"; exit 1; }
+            if grep -qxF "$note" <<< "$out"; then echo "a note with root locked"; exit 1; fi'
+
       # Step 4 runs again and changes nothing (and leaves the package's moduli file as it is), and its
       # check passes. Then the check fails on each setting turned back in a drop-in that sorts
       # first (a NIST curve, SHA-1 or the ECDSA host key back among them, or the post-quantum key
