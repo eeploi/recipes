@@ -14,5 +14,6 @@ for key in /proc/sys/net/ipv4/conf/*/accept_redirects /proc/sys/net/ipv6/conf/*/
   /proc/sys/net/ipv4/conf/*/send_redirects; do
   [ "$(cat "$key")" = 0 ] || { echo "$key is not 0" >&2; exit 1; }
 done
-[ "$(cat /proc/sys/net/ipv4/conf/all/log_martians)" = 1 ]
-[ "$(cat /proc/sys/net/ipv4/conf/default/log_martians)" = 1 ]
+for key in /proc/sys/net/ipv4/conf/all/log_martians /proc/sys/net/ipv4/conf/default/log_martians; do
+  [ "$(cat "$key")" = 1 ] || { echo "$key is not 1" >&2; exit 1; }
+done

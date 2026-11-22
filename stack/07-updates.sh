@@ -24,7 +24,11 @@ done
 # traffic. Martians (packets from an address that can't be) are logged. Only what Ubuntu doesn't set
 # already; no IPv6 router advertisement lines, some providers route IPv6 by them. The * takes every
 # interface, also one that comes later. systemd-sysctl, which reads the file at boot, applies it now.
-printf '%s\n' 'net.ipv4.conf.*.accept_redirects = 0' 'net.ipv6.conf.*.accept_redirects = 0' \
-  'net.ipv4.conf.*.send_redirects = 0' 'net.ipv4.conf.all.log_martians = 1' \
-  'net.ipv4.conf.default.log_martians = 1' > /etc/sysctl.d/60-eeploi-network.conf
+cat > /etc/sysctl.d/60-eeploi-network.conf <<'SYSCTL'
+net.ipv4.conf.*.accept_redirects = 0
+net.ipv6.conf.*.accept_redirects = 0
+net.ipv4.conf.*.send_redirects = 0
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+SYSCTL
 /usr/lib/systemd/systemd-sysctl /etc/sysctl.d/60-eeploi-network.conf
