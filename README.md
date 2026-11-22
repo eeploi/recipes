@@ -1,5 +1,13 @@
 # eeploi recipes
 
+<p align="center">
+<a href="https://github.com/eeploi/recipes/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/eeploi/recipes/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+<a href="https://github.com/eeploi/recipes/releases/latest"><img src="https://img.shields.io/github/v/release/eeploi/recipes" alt="Latest release"></a>
+<a href="LICENSE.md"><img src="https://img.shields.io/github/license/eeploi/recipes" alt="License"></a>
+</p>
+
+## About
+
 What [eeploi](https://eeploi.com) runs on a server it sets up, one bash file per step. You can read every line that runs as root right here.
 
 eeploi keeps a pinned copy of these files, at a fixed commit, and renders them into the script a new server runs once, as root, at its first boot (cloud-init user data). Nothing on the server downloads this repo.
@@ -161,6 +169,14 @@ find first-boot stack ubuntu-* -type f | LC_ALL=C sort | xargs sha256sum | sha25
 
 Each server eeploi builds records that commit and SHA-256.
 
+## Contributing
+
+Thank you for considering a contribution. [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) says how.
+
+## Security Vulnerabilities
+
+Please report a security problem privately, as [`.github/SECURITY.md`](.github/SECURITY.md) describes, never in a public issue.
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+eeploi recipes is open-sourced software licensed under the [MIT license](LICENSE.md).

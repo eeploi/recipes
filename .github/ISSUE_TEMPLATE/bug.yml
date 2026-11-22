@@ -1,0 +1,45 @@
+name: Bug report
+description: A step in eeploi recipes doesn't do what it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: A security problem never goes here; see .github/SECURITY.md. No real server names, IP addresses or secrets; use fictional ones, such as `shop.example`.
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you saw, with the error exactly as shown.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Build a server with …
+        2. See …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Recipes release or commit
+      description: The tag or commit the server was built with.
+      placeholder: v0.x.y
+    validations:
+      required: true
+  - type: input
+    id: ubuntu
+    attributes:
+      label: Ubuntu version
+      description: The output of `lsb_release -ds`.
+      placeholder: Ubuntu 26.04 LTS
+    validations:
+      required: true
