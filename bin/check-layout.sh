@@ -82,15 +82,18 @@ done < markers
 
 # DECISIONS.md numbers its entries D-1, D-2 … in order, each once, and every D-n a comment in a
 # script or workflow names is one of them.
+ids=$(sed -n 's/^## \(D-[0-9]*\): .*/\1/p' DECISIONS.md)
 n=0
-while read -r id; do
+for id in $ids; do
   n=$((n + 1))
   [ "$id" = "D-$n" ] || bad DECISIONS.md "$id where D-$n comes"
-done < <(sed -n 's/^## \(D-[0-9]*\): .*/\1/p' DECISIONS.md)
-while IFS=: read -r file line id; do
-  grep -q "^## $id: " DECISIONS.md || bad "$file:$line" "$id is not in DECISIONS.md"
-done < <(git ls-files -z '*.sh' '*.yml' | xargs -0 grep -noE '(^|[^A-Za-z0-9_-])D-[0-9]+:' \
-  | sed -E 's/:[^:]*(D-[0-9]+):$/:\1/')
+done
+known=" ${ids//$'\n'/ } "
+while IFS=: read -r file line text; do
+  for id in $(grep -oE 'D-[0-9]+:' <<< "${text#*#}" | tr -d :); do
+    case "$known" in *" $id "*) ;; *) bad "$file:$line" "$id is not in DECISIONS.md" ;; esac
+  done
+done < <(git grep -nE '#.*D-[0-9]+:' -- '*.sh' '*.yml')
 
 [ "$fail" -eq 0 ] && echo "layout ok"
 exit "$fail"

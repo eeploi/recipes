@@ -77,7 +77,7 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 ## D-8: Lynis and ssh-audit report, never gate
 
 - **Kind:** decision
-- **Decided:** 2026-11-21, #26 (PR #34), PR #38
+- **Decided:** 2026-11-21, #26 (PR #34), PR #35
 - **What:** CI runs Lynis and ssh-audit on the built server and publishes their output. Neither fails a build.
 - **Why:** they find what we missed. Their suggestions become issues, not automatic failures, since some are decided against here.
 - **Where:** `.github/workflows/ci.yml`
