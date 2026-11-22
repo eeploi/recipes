@@ -30,7 +30,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 3 | `stack/03-sudo.sh` | eeploi-helper and its one sudo rule |
 | 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login, three tries, no forwarding but local (`ssh -L`, TCP and Unix sockets), Diffie-Hellman groups of 3072 bits and up (in `/etc/ssh/eeploi-moduli`), no NIST curves or SHA-1 offered, host keys ed25519 and RSA |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
-| 6 | `stack/06-fail2ban.sh` | fail2ban for SSH, taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
+| 6 | `stack/06-fail2ban.sh` | fail2ban for SSH: bans of 1 hour that double for a repeat offender, up to a week, and the recidive jail (five bans in a day: every port, a week); taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, services restarted after one, SCTP kernel module blocked |
 | 8 | `stack/08-nginx.sh` | Real visitor IPs, a catch-all that refuses the TLS handshake for unknown hosts |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |
