@@ -1,6 +1,6 @@
 # eeploi's own addresses: the file the step writes, one address each, ignored by every jail.
 f=/etc/fail2ban/jail.d/eeploi-trusted.conf
-[ -f "$f" ] && [ ! -L "$f" ] || { echo 'eeploi-trusted.conf: not there' >&2; exit 1; }
+if [ ! -f "$f" ] || [ -L "$f" ]; then echo 'eeploi-trusted.conf: not there' >&2; exit 1; fi
 [ "$(stat -c '%U:%G %a' "$f")" = 'root:root 644' ] || { echo 'eeploi-trusted.conf: not root:root 644' >&2; exit 1; }
 # The file is the one the step writes: [DEFAULT], and the addresses added to what fail2ban ignores.
 line=$(sed -n 2p "$f")
