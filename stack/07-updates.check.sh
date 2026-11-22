@@ -1,10 +1,12 @@
 apt_config=$(apt-config dump)
 # apt runs the security updates.
 grep -qxF 'APT::Periodic::Unattended-Upgrade "1";' <<< "$apt_config"
-# Security updates only, Ubuntu's own list cleared, and sury.org's exactly when the PHP comes from
+# Security updates only (Ubuntu's and Ubuntu Pro's), Ubuntu's own list cleared, and sury.org's exactly when the PHP comes from
 # there; no origin pattern.
 # shellcheck disable=SC2016 # the ${} is apt's
-origins='Unattended-Upgrade::Allowed-Origins:: "${distro_id}:${distro_codename}-security";'
+origins='Unattended-Upgrade::Allowed-Origins:: "${distro_id}:${distro_codename}-security";
+Unattended-Upgrade::Allowed-Origins:: "${distro_id}ESMApps:${distro_codename}-apps-security";
+Unattended-Upgrade::Allowed-Origins:: "${distro_id}ESM:${distro_codename}-infra-security";'
 # shellcheck disable=SC2016 # the ${} is apt's
 [ ! -f /etc/apt/sources.list.d/sury-php.sources ] || origins+=$'\n''Unattended-Upgrade::Allowed-Origins:: "deb.sury.org:${distro_codename}";'
 [ "$(grep '^Unattended-Upgrade::Allowed-Origins:: ' <<< "$apt_config")" = "$origins" ] \
