@@ -33,6 +33,11 @@ while read -r file; do
   new=$(failed | LC_ALL=C comm -13 "$tmp/failed.before" - | paste -sd ' ' -)
   if [ -n "$new" ]; then
     echo "$file: left failed: $new"
+    # Why each one failed, for the CI log.
+    for unit in $new; do
+      systemctl status --no-pager -l "$unit" || true
+      journalctl -b --no-pager -n 40 -u "$unit" || true
+    done
     fail=1
   elif ! diff "$tmp/etc.1" "$tmp/etc.2"; then
     echo "$file: the second run changed /etc"
