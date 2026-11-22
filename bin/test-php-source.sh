@@ -49,7 +49,7 @@ expect() {
   local tries waits
   tries=$(wc -l < "$tmp/tries")
   waits=$(wc -l < "$tmp/sleeps")
-  [ "$tries" = "$1" ] && [ "$waits" = "$2" ] || { echo "$3: $tries tries and $waits waits, not $1 and $2"; exit 1; }
+  if [ "$tries" != "$1" ] || [ "$waits" != "$2" ]; then echo "$3: $tries tries and $waits waits, not $1 and $2"; exit 1; fi
   [ "$(sort -u "$tmp/tries")" = "$args" ] || { echo "$3: apt-get ran with other arguments"; exit 1; }
   [ "$waits" = 0 ] || [ "$(sort -u "$tmp/sleeps")" = 60 ] || { echo "$3: a wait not of 60 s"; exit 1; }
 }
