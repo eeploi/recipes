@@ -7,8 +7,8 @@
 # conf.d file: not with Ubuntu's PHP, whose server the
 # ssh-audit and Lynis reports read after this. bin/test-probes.sh must pass, with none of
 # them in the output and the lines expected. Then a probe with a line more that prints a secret,
-# writes to /etc, or writes to stderr must fail it. Last, with the secrets still planted, the
-# helper's server-report must pass (bin/test-server-report.sh). The server is as it was after, also on a failure.
+# writes to /etc, or writes to stderr must fail it. Last, with Redis as it was and the other secrets
+# still planted, the helper's server-report must pass (bin/test-server-report.sh). The server is as it was after, also on a failure.
 # For CI only, as root, in the server container.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -20,12 +20,21 @@ plant() { planted+=("$1"); cat > "$1"; }
 restore() {
   rm -f ${planted[@]+"${planted[@]}"} /etc/written
   [ ! -f /root/www.conf ] || cp /root/www.conf "$www"
-  if [ -f /root/redis.conf ]; then cp /root/redis.conf /etc/redis/redis.conf; systemctl restart redis-server; fi
-  rm -f /root/www.conf /root/redis.conf
+  redis_back
+  rm -f /root/www.conf
   [ -z "${copy:-}" ] || rm -rf "$copy"
   ufw delete allow 8082/tcp > /dev/null || true
   fail2ban-client set sshd unbanip 203.0.113.7 > /dev/null || true
 }
+# redis_back: Redis's config as it was, and the shared Redis stopped again unless it ran before (step
+# 10 stops it, and its check fails while it runs).
+redis_back() {
+  [ -f /root/redis.conf ] || return 0
+  cp /root/redis.conf /etc/redis/redis.conf
+  rm /root/redis.conf
+  if [ "$redis_was" = active ]; then systemctl restart redis-server; else systemctl stop redis-server; fi
+}
+redis_was=$(systemctl is-active redis-server || true)
 trap restore EXIT
 
 if [ "$php" != 8.5 ]; then
@@ -99,5 +108,7 @@ for line in 'echo leak PLANTED-x' 'touch /etc/written' 'echo oops >&2'; do
 done
 echo 'probes on the server ok'
 
-# The helper's report, with the same secrets still planted: the checks and probes recipe-run kept.
+# The helper's report, with the other secrets still planted: the checks and probes recipe-run kept.
+# Redis first as step 10 left it, or its check fails.
+redis_back
 bin/test-server-report.sh "${secrets[@]}"
