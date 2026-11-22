@@ -79,25 +79,23 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
 done
 "$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$src fails bin/check-layout.sh" >&2; exit 1; }
 
-# The release tags before this one, in version order, then this release: refs to read, names to print.
-refs=()
-names=()
+# The release versions up to this one, in version order: each read from its tag, this one from $ref.
+releases=()
 while IFS= read -r v; do
+  releases+=("$v")
   [ "$v" != "$version" ] || break
-  refs+=("v$v")
-  names+=("$v")
-done < <({ git tag -l 'v*' | sed -n 's/^v//p' | grep -E "$semver" || true; echo "$version"; } | sort -u -t. -k1,1n -k2,2n -k3,3n)
-refs+=("$ref")
-names+=("$version")
+done < <({ git tag -l 'v*' | sed -n 's/^v//p' | grep -E "$semver" || true; echo "$version"; } | sort -t. -k1,1n -k2,2n -k3,3n | uniq)
 
 # The release a file came in, and the first release since which it is the same as in this one.
 versions() {
-  local now i blob introduced='' changed=''
+  local now v r blob introduced='' changed=''
   now=$(git rev-parse "$ref:$1")
-  for i in "${!refs[@]}"; do
-    blob=$(git rev-parse -q --verify "${refs[i]}:$1") || blob=''
-    if [ -n "$blob" ] && [ -z "$introduced" ]; then introduced=${names[i]}; fi
-    if [ "$blob" != "$now" ]; then changed=''; elif [ -z "$changed" ]; then changed=${names[i]}; fi
+  for v in "${releases[@]}"; do
+    r=v$v
+    [ "$v" != "$version" ] || r=$ref
+    blob=$(git rev-parse -q --verify "$r:$1") || blob=''
+    if [ -n "$blob" ] && [ -z "$introduced" ]; then introduced=$v; fi
+    if [ "$blob" != "$now" ]; then changed=''; elif [ -z "$changed" ]; then changed=$v; fi
   done
   echo "$introduced $changed"
 }

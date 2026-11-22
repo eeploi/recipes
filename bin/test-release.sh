@@ -105,7 +105,7 @@ tgit -C "$repo" commit -qm one
 tgit -C "$repo" remote add origin "$t/origin.git"
 tgit -C "$repo" push -q origin main
 head=$(tgit -C "$repo" rev-parse HEAD)
-short=${head:0:7}
+short=$(tgit -C "$repo" rev-parse --short HEAD)
 undo="check it with gh release view v9.9.9 -R eeploi/recipes, delete it with gh release delete v9.9.9 -R eeploi/recipes, then run this again"
 args=(9.9.9 1.1.0 example)
 

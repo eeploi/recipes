@@ -90,8 +90,13 @@ release_state() {
     fail "GitHub did not list the releases of $REPO"
   case $states in *published*) release=published ;; *draft*) release=draft ;; *) release= ;; esac
 }
-# assets <files...>: their names, sorted, comma separated, as the release views below print them.
+# assets <files...>: their names, sorted, comma separated, as release_view prints them.
 assets() { printf '%s\n' "${@##*/}" | sort | paste -sd , -; }
+# release_view <field>: "<isDraft> <field> <asset names, as assets prints them> <title>" of release $tag.
+release_view() {
+  gh release view "$tag" -R "$REPO" --json "isDraft,$1,assets,name" \
+    --jq "\"\\(.isDraft) \\(.$1) \\([.assets[].name] | sort | join(\",\")) \\(.name)\""
+}
 # tag_list local|remote: each v* tag and its commit, sorted. The build reads every v* tag for
 # the versions in the manifest, so they must be GitHub's.
 tag_list() {
@@ -113,7 +118,8 @@ verify() {
   env -u RECIPES_PUB RECIPES_COMMIT="$head" RECIPES_DIR="$1" bin/build-release.sh --verify "$version" "$min_helper" "${providers[@]}" |
     sed 's/^/  /'
 }
-# same <folder>: it holds the files built and signed in $out, byte for byte.
+# same <folder>: it holds the files built and signed in $out, byte for byte, the .minisig files too.
+# verify then checks them again on their own, against a fresh build and minisign.pub.
 same() {
   local f
   for f in "${files[@]}"; do
@@ -129,10 +135,11 @@ done
 git fetch -q origin main
 branch=$(git branch --show-current)
 head=$(git rev-parse HEAD)
+short=$(git rev-parse --short "$head")
 clean=; [ -n "$(git status --porcelain)" ] || clean=1
 synced=; [ "$head" != "$(git rev-parse origin/main)" ] || synced=1
 tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
-remote_tagged=$(remote_tag)
+remote_tagged=$(remote_tag) || fail "could not ask GitHub for $tag"
 helper_ok=; if gh_has "repos/$HELPER_REPO/releases/tags/v$min_helper"; then helper_ok=1; fi
 release_state
 immutable_on=$(gh api "repos/$REPO/immutable-releases" --jq .enabled) || fail "GitHub did not say whether $REPO has immutable releases"
@@ -147,7 +154,7 @@ while IFS= read -r os; do oses+=("$os"); done < <(git ls-tree --name-only "$head
 printf 'Recipes release %s\n' "$version"
 printf '  repo     %s, on %s, %s%s\n' "$REPO" "${branch:-no branch}" \
   "$([ -n "$synced" ] && echo 'up to date' || echo 'NOT the same as GitHub')" "$([ -n "$clean" ] || echo ', uncommitted changes')"
-printf '  commit   %s, main: publishing tags it %s\n' "$(git rev-parse --short "$head")" "$tag"
+printf '  commit   %s, tagged %s when published\n' "$short" "$tag"
 if [ -n "$tagged$remote_tagged" ]; then
   printf '  tag      %s EXISTS%s%s\n' "$tag" "${tagged:+ here}" "${remote_tagged:+ on GitHub}"
 fi
@@ -161,7 +168,7 @@ begin checks
 [ "$branch" = main ] || fail "not on main"
 [ -n "$clean" ] || fail "uncommitted changes"
 [ -n "$synced" ] || fail "main is not the same as GitHub's main: pull or push first"
-ok "on main at $(git rev-parse --short "$head"), clean, the same as GitHub"
+ok "on main at $short, clean, the same as GitHub"
 diff "$work/tags.local" "$work/tags.remote" | sed -n 's/^</  here only or other:/p; s/^>/  GitHub only or other:/p' >&2 || true
 cmp -s "$work/tags.local" "$work/tags.remote" || fail "the v* tags here are not GitHub's (above): git fetch --tags, or remove a local one"
 ok "every v* tag the same as GitHub's"
@@ -174,8 +181,8 @@ ok "$tag is new, here and on GitHub"
 [ "$release" != published ] || fail "$REPO already has a release $tag: releases are immutable, release a new version"
 ok "no release $tag yet, no draft either"
 ci=$(gh run list -R "$REPO" --commit "$head" --workflow ci.yml --event push --branch main --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
-[ "$ci" = "completed success" ] || fail "CI on main at $(git rev-parse --short "$head") is not green (${ci:-no run})"
-ok "CI on main at $(git rev-parse --short "$head") green"
+[ "$ci" = "completed success" ] || fail "CI on main at $short is not green (${ci:-no run})"
+ok "CI on main at $short green"
 [ -n "$helper_ok" ] || fail "no eeploi-helper release v$min_helper"
 ok "eeploi-helper v$min_helper released"
 [ "${#oses[@]}" -gt 0 ] || fail "main has no ubuntu-* folder"
@@ -198,7 +205,7 @@ fi
 
 begin build
 RECIPES_COMMIT=$head bin/build-release.sh "$version" "$min_helper" "${providers[@]}" | sed 's/^/  /' || fail "the build failed"
-ok "built from main at $(git rev-parse --short "$head")"
+ok "built from main at $short"
 
 begin sign
 manifests=("$out"/*.manifest)
@@ -220,8 +227,13 @@ printf '  %s\n' "${files[@]##*/}"
 read -r -p "  Publish these as $REPO $tag, \"$title\"? It goes up as a draft first, checked before it is published. Once published, it can't be undone. [y/N] " answer || answer=
 [ "$answer" = y ] || fail "not published"
 # The folder or GitHub can change while the question waits: check them again before anything goes up.
-[ "$(git rev-parse HEAD)" = "$head" ] || fail "the folder moved off $(git rev-parse --short "$head") since the checks: run it again"
-[ -z "$(remote_tag)" ] || fail "$tag was made on GitHub since the checks: release a new version"
+[ "$(git rev-parse HEAD)" = "$head" ] || fail "the folder moved off $short since the checks: run it again"
+git fetch -q origin main
+[ "$(git rev-parse origin/main)" = "$head" ] || fail "GitHub's main moved off $short since the checks: run it again"
+tag_list remote > "$work/tags.now" || fail "could not list the tags on GitHub"
+cmp -s "$work/tags.local" "$work/tags.now" || fail "the v* tags on GitHub changed since the checks: run it again"
+remote=$(remote_tag) || fail "could not ask GitHub for $tag"
+[ -z "$remote" ] || fail "$tag was made on GitHub since the checks: release a new version"
 release_state
 [ -z "$release" ] || fail "a release $tag appeared since the checks"
 # D-21: nothing that can't change goes up before its files are checked. The release starts as a
@@ -231,13 +243,12 @@ drafted=1
 left="nothing was published and $tag was not made. A draft release $tag may be left on GitHub: $undo"
 gh release create "$tag" "${files[@]}" -R "$REPO" --draft --target "$head" --title "$title" \
   --notes "Signed with the recipes key $pub_id. Needs eeploi-helper $min_helper." > /dev/null || fail "could not create the draft"
-ok "draft $tag on $(git rev-parse --short "$head"), no tag yet"
+ok "draft $tag on $short, no tag yet"
 
 begin 'verify the draft'
-draft=$(gh release view "$tag" -R "$REPO" --json isDraft,targetCommitish,assets,name \
-  --jq '"\(.isDraft) \(.targetCommitish) \([.assets[].name] | sort | join(",")) \(.name)"') || fail "could not read the draft"
+draft=$(release_view targetCommitish) || fail "could not read the draft"
 [ "$draft" = "true $head $want $title" ] ||
-  fail "the draft is not a draft on $(git rev-parse --short "$head") titled $title with only the files built and signed ($draft)"
+  fail "the draft is not a draft on $short titled $title with only the files built and signed ($draft)"
 mkdir "$work/draft"
 gh release download "$tag" -R "$REPO" -D "$work/draft" || fail "could not download the draft's files"
 same "$work/draft" || fail "the draft's files are not the ones built and signed"
@@ -254,7 +265,7 @@ if [ -n "$remote" ]; then
 fi
 if ! gh release edit "$tag" -R "$REPO" --draft=false > /dev/null; then
   # The error can come after GitHub published it: only a release that is still a draft is unpublished.
-  state=$(gh release view "$tag" -R "$REPO" --json isDraft --jq .isDraft 2>&1) || true
+  state=$(gh release view "$tag" -R "$REPO" --json isDraft --jq .isDraft 2>"$work/view") || state=$(cat "$work/view")
   [ "$state" != true ] || fail "could not publish the draft"
   left=
   [ "$state" != false ] || { published=1; fail "publishing $tag gave an error, but GitHub shows it published: check gh release view $tag -R $REPO before anything else"; }
@@ -266,8 +277,7 @@ published=1
 ok "published $tag"
 
 begin 'check after'
-got=$(gh release view "$tag" -R "$REPO" --json isDraft,isImmutable,assets,name \
-  --jq '"\(.isDraft) \(.isImmutable) \([.assets[].name] | sort | join(",")) \(.name)"') || fail "could not read $tag back from GitHub"
+got=$(release_view isImmutable) || fail "could not read $tag back from GitHub"
 [ "$got" = "false true $want $title" ] ||
   fail "$tag is published, but not as an immutable release titled $title with only the files built and signed ($got): check it and the repository's settings"
 # A draft's files could still change until it was published: check the published ones too.
@@ -276,7 +286,7 @@ gh release download "$tag" -R "$REPO" -D "$work/down" || fail "could not downloa
 same "$work/down" || fail "the published files are not the ones built and signed"
 verify "$work/down" || fail "the published release does not verify"
 git fetch -q origin "refs/tags/$tag:refs/tags/$tag" || fail "could not fetch $tag from GitHub"
-[ "$(git rev-parse "refs/tags/$tag^{commit}")" = "$head" ] || fail "$tag on GitHub is not $(git rev-parse --short "$head")"
-ok "immutable, titled $title, the files built and signed, verified again; $tag on $(git rev-parse --short "$head")"
+[ "$(git rev-parse "refs/tags/$tag^{commit}")" = "$head" ] || fail "$tag on GitHub is not $short"
+ok "immutable, titled $title, the files built and signed, verified again; $tag on $short"
 
-printf '\nDone: %s, %s = %s, titled "%s".\n' "$REPO" "$tag" "$(git rev-parse --short "$head")" "$title"
+printf '\nDone: %s, %s = %s, titled "%s".\n' "$REPO" "$tag" "$short" "$title"
