@@ -570,7 +570,7 @@ jobs:
             bash /root/ssh-check'
 
       # PHP-FPM's stock [www] pool listens on a socket only root may open, and step 2's check passes.
-      # Then it fails, with its own message, on each [www] setting turned back and on expose_php or
+      # Then it fails, with its own message, on each [www] setting turned back (pm static: with two workers, dynamic is no valid pool) and on expose_php or
       # session upload progress on again in a later conf.d file.
       - name: server, the PHP check
         run: |
@@ -587,7 +587,7 @@ jobs:
               cp /root/www.conf "$www"
               rm -f "/etc/php/$v/fpm/conf.d/99-zzz.ini"
             }
-            sed -i "s/^pm = .*/pm = dynamic/" "$www"; fails "pm dynamic" "not pm = ondemand"
+            sed -i "s/^pm = .*/pm = static/" "$www"; fails "pm static" "not pm = ondemand"
             sed -i "s/^pm.max_children = .*/pm.max_children = 5/" "$www"; fails "5 workers" "not pm.max_children = 2"
             sed -i "s/^listen.owner = .*/listen.owner = www-data/" "$www"; fails "owner www-data" "not listen.owner = root"
             sed -i "s/^listen.group = .*/listen.group = www-data/" "$www"; fails "group www-data" "not listen.group = root"
