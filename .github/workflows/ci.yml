@@ -489,6 +489,7 @@ jobs:
       # site and a changed catch-all included, and nginx running. A copy left aside by a run that was
       # cut off is what comes back. When nginx doesn't reload, the config comes back too. Then, with
       # the broken file gone, the step and its check pass again; the check fails with a copy left.
+      # An nginx.conf without a server_tokens line gets one at the top of http {}.
       - name: nginx, a refused config
         run: |
           docker exec twice bash -euc '
@@ -524,6 +525,11 @@ jobs:
             rm -r /etc/systemd/system/nginx.service.d
             systemctl daemon-reload
             bash /tmp/step
+            bash /tmp/check-08
+            sed -i "/server_tokens/d" /etc/nginx/nginx.conf
+            if bash /tmp/check-08 2> /dev/null; then echo "08 check passed without server_tokens"; exit 1; fi
+            bash /tmp/step
+            grep -A1 -E "^http[[:space:]]*[{]" /etc/nginx/nginx.conf | grep -qxF "$(printf "\tserver_tokens off;")"
             bash /tmp/check-08
             mkdir /etc/nginx/eeploi.prev
             if bash /tmp/check-08 2> /tmp/out-08; then echo "08 check passed with a copy left aside"; exit 1; fi
@@ -856,8 +862,8 @@ jobs:
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without
       # ssl_reject_handshake, with a certificate in it, or with the old key or certificate back; with
-      # Ubuntu's server_tokens line back in nginx.conf, or a server block that turns it on again, not
-      # with one in a comment.
+      # Ubuntu's server_tokens line back in nginx.conf, or a server block that turns it on again (in
+      # any case), not with one in a comment.
       # The real IP check fails without the header line, without a range, or with a line nginx refuses.
       - name: server, the nginx catch-all
         run: |
@@ -884,10 +890,11 @@ jobs:
             touch /etc/nginx/ssl/catch-all.crt; fails "the old certificate" "still has a certificate"; rm /etc/nginx/ssl/catch-all.crt
             n=/etc/nginx/nginx.conf
             cp "$n" /root/nginx.conf
-            check=/root/nginx-check saved=/root/nginx.conf target=$n
+            saved=/root/nginx.conf target=$n
             sed -i "s/server_tokens off;/server_tokens build;/" "$n"; fails "server_tokens build" "nginx.conf does not turn server_tokens off"
             t=/etc/nginx/conf.d/tokens.conf
             printf "server {\n    listen 8099;\n    server_tokens on;\n}\n" > "$t"; fails "a server block with server_tokens on" "turns server_tokens on again"
+            printf "server {\n    listen 8099;\n    server_tokens BUILD;\n}\n" > "$t"; fails "server_tokens BUILD" "turns server_tokens on again"
             printf "# server_tokens on;\n" > "$t"; bash /root/nginx-check; rm "$t"
             bash /root/nginx-check
             bin/render.sh --check stack/08-real-ip.sh > /root/real-ip-check
