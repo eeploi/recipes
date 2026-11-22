@@ -1,10 +1,11 @@
-# 8. nginx: room for large headers, no default site, a catch-all that refuses the TLS handshake for
-#    unknown hosts; the old config comes back when nginx refuses the new one or doesn't reload
+# 8. nginx: no version in its headers and error pages, room for large headers, no default site, a
+#    catch-all that refuses the TLS handshake for unknown hosts; the old config comes back when nginx
+#    refuses the new one or doesn't reload
 STEP='8. nginx'
 # The files this step changes stay aside until nginx takes the new config, and come back if it
 # doesn't: a live server keeps serving its sites. A copy left aside by a run that was cut off is the
 # old config, so it stays. Every file this step writes or removes is in nginx_files.
-nginx_files='/etc/nginx/conf.d/eeploi-fastcgi.conf /etc/nginx/sites-enabled/default
+nginx_files='/etc/nginx/nginx.conf /etc/nginx/conf.d/eeploi-fastcgi.conf /etc/nginx/sites-enabled/default
 /etc/nginx/sites-available/catch-all /etc/nginx/sites-enabled/catch-all /etc/nginx/ssl/catch-all.crt
 /etc/nginx/ssl/catch-all.key'
 nginx_prev=/etc/nginx/eeploi.prev
@@ -17,10 +18,23 @@ if [ ! -d "$nginx_prev" ]; then
   done
   mv "$nginx_prev.new" "$nginx_prev"
 fi
+# A copy left aside by an older release has no nginx.conf, which that release never changed: the one
+# here is the old one. Without it, a restore would remove nginx.conf.
+if [ ! -e "$nginx_prev/etc/nginx/nginx.conf" ]; then
+  mkdir -p "$nginx_prev/etc/nginx"
+  cp -a /etc/nginx/nginx.conf "$nginx_prev/etc/nginx/nginx.conf.new"
+  mv "$nginx_prev/etc/nginx/nginx.conf.new" "$nginx_prev/etc/nginx/nginx.conf"
+fi
+# Each file comes back in one rename, so a restore cut off halfway never leaves nginx.conf missing.
 nginx_restore() {
   for f in $nginx_files; do
-    rm -f "$f"
-    ! nginx_present "$nginx_prev$f" || cp -a "$nginx_prev$f" "$f"
+    if nginx_present "$nginx_prev$f"; then
+      rm -f "$nginx_prev/.restore"
+      cp -a "$nginx_prev$f" "$nginx_prev/.restore"
+      mv -fT "$nginx_prev/.restore" "$f"
+    else
+      rm -f "$f"
+    fi
   done
   rm -rf "$nginx_prev"
 }
@@ -32,6 +46,17 @@ nginx_refused() {
   echo "$1" >&2
   exit 1
 }
+# No nginx version or build name in the Server header and on error pages. Ubuntu's nginx.conf sets
+# server_tokens in http {}, and a second one in conf.d makes nginx refuse its config, so its own line
+# changes, or one comes in at the top of http {} where it has none. D-27: an nginx update keeps this
+# nginx.conf.
+tokens_off='^[[:space:]]*server_tokens off;'
+sed -i -E 's/^([[:space:]]*)server_tokens[[:space:]][^;]*;/\1server_tokens off;/' /etc/nginx/nginx.conf
+if ! grep -qE "$tokens_off" /etc/nginx/nginx.conf; then
+  sed -i -E '0,/^[[:space:]]*http[[:space:]]*\{/s//&\n\tserver_tokens off;/' /etc/nginx/nginx.conf
+  grep -qE "$tokens_off" /etc/nginx/nginx.conf \
+    || nginx_refused 'nginx.conf has no http block to turn server_tokens off in, it is as it was'
+fi
 # The security policy and Vite's preload Link headers outgrow nginx's default 4k buffer: a 502.
 cat > /etc/nginx/conf.d/eeploi-fastcgi.conf <<'NGINX'
 fastcgi_buffer_size 32k;

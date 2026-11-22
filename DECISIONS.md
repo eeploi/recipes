@@ -229,3 +229,12 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Why:** three values typed by hand are easy to get wrong, and a wrong one can't be undone (D-21). A release claims only the helper CI tested it with, and its changes are written down before it goes out.
 - **Accepted:** a new version or provider needs a commit, reviewed in a pull request, before it can be released. The helper CI tests with is the helper every server needs: raising `HELPER_TAG` raises `min-helper` in the next release, also when no recipe needs the newer helper.
 - **Where:** `bin/release.sh`, `bin/release-values.sh`
+
+## D-27: An nginx update keeps eeploi's nginx.conf
+
+- **Kind:** known limit
+- **Decided:** 2026-11-22, #72
+- **What:** step 8 changes one line of Ubuntu's `/etc/nginx/nginx.conf`, a dpkg conffile: `server_tokens` becomes `off`, or the line comes in at the top of `http {}`. With `--force-confold` (step 7), an nginx update keeps that `nginx.conf` and leaves Ubuntu's new one next to it as `nginx.conf.dpkg-dist`, so a change Ubuntu makes to it is not taken. The same holds for every conffile a step changes. The nginx probe says whether `nginx.conf.dpkg-dist` is there.
+- **Why:** Ubuntu's `nginx.conf` sets `server_tokens build` in `http {}`, and nginx refuses a second `server_tokens` there, so a file of eeploi's own in `conf.d` can't turn it off.
+- **Where:** `stack/08-nginx.sh`, `stack/08-nginx.check.sh`, `stack/08-nginx.probe.sh`
+
