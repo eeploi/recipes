@@ -575,7 +575,7 @@ jobs:
       - name: server, the PHP check
         run: |
           docker exec server bash -euc '
-            v=$(ls /etc/php)
+            v=$(. /etc/eeploi/recipes.conf && echo "$PHP")
             [ "$(stat -c "%U:%G %a" "/run/php/php$v-fpm.sock")" = "root:root 600" ]
             bin/render.sh --check stack/02-deploy-user.sh > /root/php-check
             bash /root/php-check
@@ -593,8 +593,7 @@ jobs:
             sed -i "s/^listen.group = .*/listen.group = www-data/" "$www"; fails "group www-data" "not listen.group = root"
             sed -i "s/^listen.mode = .*/listen.mode = 0660/" "$www"; fails "mode 0660" "not listen.mode = 0600"
             echo "expose_php = On" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"; fails "expose_php on" "expose_php is not off"
-            echo "session.upload_progress.enabled = 1" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"
-            fails "upload progress on" "session.upload_progress.enabled is not off"
+            echo "session.upload_progress.enabled = 1" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"; fails "upload progress on" "upload_progress.enabled is not off"
             bash /root/php-check'
 
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,

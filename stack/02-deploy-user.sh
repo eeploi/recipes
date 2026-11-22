@@ -7,8 +7,8 @@ STEP='2. Deploy user'
 sed -i -e 's/^pm = .*/pm = ondemand/' -e 's/^pm\.max_children = .*/pm.max_children = 2/' \
   -e 's/^;\?listen\.owner = .*/listen.owner = root/' -e 's/^;\?listen\.group = .*/listen.group = root/' \
   -e 's/^;\?listen\.mode = .*/listen.mode = 0600/' /etc/php/$PHP/fpm/pool.d/www.conf
-# No X-Powered-By header with the PHP version, and no upload progress in the session (PHP's advice
-# for CVE-2026-115560 until a fix; Laravel doesn't use it). A file of its own: eeploi-helper
+# No X-Powered-By header with the PHP version, and no upload progress in the session: Laravel
+# doesn't use it, and PHP advises it off for CVE-2026-115560. A file of its own: eeploi-helper
 # rewrites 90-eeploi.ini.
 printf '; Written by eeploi at first boot.\nexpose_php = Off\nsession.upload_progress.enabled = 0\n' > /etc/php/$PHP/fpm/conf.d/80-eeploi-server.ini
 # The pools share one OPcache: a site runs another's cached script only if it may read the file.
