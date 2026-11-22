@@ -855,7 +855,9 @@ jobs:
 
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without
-      # ssl_reject_handshake, with a certificate in it, or with the old key or certificate back.
+      # ssl_reject_handshake, with a certificate in it, or with the old key or certificate back; with
+      # Ubuntu's server_tokens line back in nginx.conf, or a server block that turns it on again, not
+      # with one in a comment.
       # The real IP check fails without the header line, without a range, or with a line nginx refuses.
       - name: server, the nginx catch-all
         run: |
@@ -880,6 +882,13 @@ jobs:
             sed -i "s|ssl_reject_handshake on;|&\n    ssl_certificate /etc/nginx/ssl/x.crt;|" "$f"; fails "a certificate" "still has a certificate"
             touch /etc/nginx/ssl/catch-all.key; fails "the old key" "still has a certificate"; rm /etc/nginx/ssl/catch-all.key
             touch /etc/nginx/ssl/catch-all.crt; fails "the old certificate" "still has a certificate"; rm /etc/nginx/ssl/catch-all.crt
+            n=/etc/nginx/nginx.conf
+            cp "$n" /root/nginx.conf
+            check=/root/nginx-check saved=/root/nginx.conf target=$n
+            sed -i "s/server_tokens off;/server_tokens build;/" "$n"; fails "server_tokens build" "nginx.conf does not turn server_tokens off"
+            t=/etc/nginx/conf.d/tokens.conf
+            printf "server {\n    listen 8099;\n    server_tokens on;\n}\n" > "$t"; fails "a server block with server_tokens on" "turns server_tokens on again"
+            printf "# server_tokens on;\n" > "$t"; bash /root/nginx-check; rm "$t"
             bash /root/nginx-check
             bin/render.sh --check stack/08-real-ip.sh > /root/real-ip-check
             bash /root/real-ip-check

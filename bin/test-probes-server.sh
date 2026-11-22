@@ -88,6 +88,7 @@ for expect in 'ssh:^port 10022$' 'ssh:^permitrootlogin no$' 'ssh:^passwordauthen
   'nginx:^server [0-9]+ ssl_reject_handshake on$' 'nginx:^server [0-9]+ listen 443 ssl default_server$' \
   'nginx:^server [0-9]+ server_name planted[.]example$' 'nginx:^server [0-9]+ listen 8081$' 'nginx:^server [0-9]+ listen 8083$' \
   'nginx:^http fastcgi_buffer_size 32k$' 'nginx:^http real_ip_header CF-Connecting-IP$' \
+  'nginx:^http server_tokens off$' 'nginx:^nginx-conf-dpkg-dist no$' \
   "php-fpm:^pool $php www pm[.]max_children 2\$" "php-fpm:^pool $php www listen[.]mode 0600\$" \
   "php-fpm:^ini $php expose_php Off\$" "php-fpm:^ini $php opcache[.]validate_permission On\$" \
   'mysql:^option bind-address 127[.]0[.]0[.]1$' 'redis:^listen 127[.]0[.]0[.]1:6379$' 'redis:^password yes$' \

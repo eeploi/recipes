@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Probe: nginx. The config nginx reads, after every include (nginx -T), cut to these directives:
 # per server block its listens and server names and whether it refuses the TLS handshake, and a
-# few http settings. Never a certificate, a key or any other directive. No nginx: no lines.
-# PROBES.md.
-# Lines: server <n> file <path>, server <n> <directive> <arguments>, http <directive> <arguments>;
-# n counts the server blocks in the order nginx -T prints them.
+# few http settings. Never a certificate, a key or any other directive. And whether a newer stock
+# nginx.conf waits next to the one in use (D-27). No nginx: no lines. PROBES.md.
+# Lines: server <n> file <path>, server <n> <directive> <arguments>, http <directive> <arguments>,
+# nginx-conf-dpkg-dist yes|no; n counts the server blocks in the order nginx -T prints them.
 set -euo pipefail
 # The directives shown, and the settings whose values are safe to show: in a server block, and in http.
 server_safe=(listen server_name ssl_reject_handshake)
@@ -104,3 +104,5 @@ END {
   if (bad || !clean()) exit 1
   for (i = 0; i < lines; i++) print out[i]
 }' <<< "$config"
+# D-27: an nginx update that brings a new nginx.conf leaves it as nginx.conf.dpkg-dist.
+if [ -e /etc/nginx/nginx.conf.dpkg-dist ]; then echo 'nginx-conf-dpkg-dist yes'; else echo 'nginx-conf-dpkg-dist no'; fi
