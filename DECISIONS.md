@@ -179,3 +179,12 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **What:** the apt probe counts the updates waiting from the package lists on the server, by a simulated upgrade. It doesn't update the lists. The count is as old as `lists-updated` says.
 - **Why:** a probe needs no network. apt updates the lists daily on its own (step 7).
 - **Where:** `stack/07-apt.probe.sh`
+
+## D-21: Release tags and releases can't be changed
+
+- **Kind:** decision
+- **Decided:** 2026-11-17
+- **What:** a `v*` tag can't be moved or deleted (the ruleset "protect release tags" blocks update and deletion of `refs/tags/v*`), and releases are immutable. A fix is a new version, never a changed one. `bin/release.sh` stops when immutable releases are off.
+- **Why:** a server checks a release against its signed manifest, by version. A version that can change would make that check, and every record of which release a server ran, worth nothing.
+- **Accepted:** a tag on the wrong commit, or a release published by mistake, stays. The next version replaces it.
+- **Where:** `bin/release.sh`
