@@ -7,13 +7,14 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - Read this file first.
 - A finding against an entry here is not a bug. Report it as "challenges D-n", with an argument the entry doesn't already answer.
 - A rejected audit finding becomes a new entry, so the next audit doesn't raise it again.
+- Anything that could be a vulnerability, an entry here included, goes through the [security policy](.github/SECURITY.md), not a public issue.
 
 ## How entries work
 
 - One entry per decision, numbered `D-1`, `D-2` and so on. A number is never reused or renumbered.
 - **Kind** is `decision`, `accepted risk` or `known limit`.
 - **Decided** gives the date and the issue or pull request in this repo.
-- **Where** names the files the entry shapes. The line it shapes carries a comment `# D-n: …`. `bin/check-layout.sh` fails on a `D-n` comment without an entry here.
+- **Where** names the files the entry shapes, if any. The line it shapes carries a comment `# D-n: …`. `bin/check-layout.sh` fails on a `D-n` comment without an entry here, and on a file in **Where** without its comment.
 - A changed decision is a new entry. The old one stays, with **Replaced by** `D-n`.
 - No private details: no server names, addresses or business reasons. Only what explains the code.
 
