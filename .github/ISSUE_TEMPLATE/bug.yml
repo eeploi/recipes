@@ -17,7 +17,7 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Run step 4 (`stack/04-ssh.sh`) on …
+        1. Build a server with …
         2. See …
     validations:
       required: true
@@ -32,7 +32,7 @@ body:
     attributes:
       label: Recipes release or commit
       description: The tag or commit the server was built with.
-      placeholder: v0.4.2
+      placeholder: v0.x.y
     validations:
       required: true
   - type: input

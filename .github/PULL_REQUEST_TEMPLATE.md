@@ -2,7 +2,7 @@
 
 ## Summary
 
-<!-- The problem and how servers come out after the change, in plain words. Link the issue: "Closes #N". -->
+<!-- What changed and how servers come out after it, in plain words. Link the issue: "Closes #N". -->
 
 ## Changes
 
@@ -14,4 +14,4 @@
 
 ## Limitations
 
-<!-- Risks, assumptions and what isn't verified, or "None". -->
+<!-- What isn't verified, or "None". -->
