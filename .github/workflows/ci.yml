@@ -381,6 +381,12 @@ jobs:
               rm -f /etc/written
             done'
 
+      # php-source.sh in a fresh container, as it writes /etc/apt, with apt-get, date and sleep
+      # stubbed: a sync error is tried again for ten minutes, another error stops at once
+      # (bin/test-php-source.sh).
+      - name: PHP source, apt-get update tried again
+        run: docker run --rm -v "$PWD:/recipes:ro" -w /recipes twice bin/test-php-source.sh
+
       # The fingerprint prints only known facts, in the container and on the runner, a real VM,
       # and leaves /etc as it was.
       - name: fingerprint

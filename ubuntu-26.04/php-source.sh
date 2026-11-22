@@ -82,4 +82,19 @@ Suites: {codename}
 Components: main
 Signed-By: /etc/apt/keyrings/sury-php.asc
 SOURCES
-apt-get update -q
+# While packages.sury.org syncs its mirrors, an index can have the wrong size for a while. apt-get
+# update reads this source only (step 1 updated Ubuntu's just before, and keeps those lists). On a
+# sync error it tries again every 60 s, for ten minutes, then stops the step with a message; on any
+# other error it stops at once, with apt's first error. Either is the last line of the step's
+# output, the line a first boot reports. No fallback to Ubuntu's PHP: the server gets the PHP
+# version chosen.
+SURY_UNTIL=$(($(date +%s) + 600))
+until SURY_OUT=$(apt-get update -q -o Dir::Etc::SourceList=/etc/apt/sources.list.d/sury-php.sources \
+  -o Dir::Etc::SourceParts=- -o APT::Get::List-Cleanup=0 2>&1); do
+  # On stderr, as the line after it, so the two reach the first boot's output in this order.
+  printf '%s\n' "$SURY_OUT" >&2
+  grep -qE 'File has unexpected size|Hash Sum mismatch' <<< "$SURY_OUT" || { grep -m 1 '^E: ' <<< "$SURY_OUT" >&2 || true; exit 1; }
+  [ "$(date +%s)" -lt "$SURY_UNTIL" ] || { echo 'The PHP source is updating; try again later.' >&2; exit 1; }
+  sleep 60
+done
+printf '%s\n' "$SURY_OUT"
