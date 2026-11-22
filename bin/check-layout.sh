@@ -90,7 +90,7 @@ while IFS= read -r file; do readers+=("$file"); done < <(grep -rlE --include='*.
 if [ "${#readers[@]}" -lt 2 ]; then
   bad D-28 "the nginx reader is in ${#readers[@]} files, not in the check and the probe"
 else
-  first=$(reader "${readers[0]}") || bad "${readers[0]}" "has more than one nginx reader, or no end line"
+  first=$(reader "${readers[0]}") || { bad "${readers[0]}" "has more than one nginx reader, or no end line"; readers=("${readers[0]}"); }
   for file in "${readers[@]:1}"; do
     copy=$(reader "$file") || { bad "$file" "has more than one nginx reader, or no end line"; continue; }
     [ "$copy" = "$first" ] || bad "$file" "its nginx reader differs from the one in ${readers[0]}"

@@ -118,13 +118,17 @@ nginx_read() {
 # why. D-11: nginx -T reads the config on disk.
 config=$(nginx -T 2> /dev/null) || { echo 'nginx refuses its config' >&2; nginx -t || true; exit 1; }
 tokens=$(nginx_read server_tokens <<< "$config") || { echo 'nginx -T could not be read as nginx reads it' >&2; exit 1; }
-# Exit 2: no off in http {} of nginx.conf; 3: a value but off.
+# Exit 3: no off in http {} of nginx.conf, the first file nginx -T prints (a comment that looks
+# like a file's start can't stand in for it); 4: a value but off.
 rc=0
 # shellcheck disable=SC2016 # awk's $
-awk 'NF == 0 || $3 == "file" { next } $1 == "file" { f = substr($0, 6); next }
+awk '$1 == "file" { files++; f = files == 1 ? substr($0, 6) : ""; next } NF == 0 || ($1 == "server" && $3 == "file") { next }
   { v = tolower($0); sub(/^[a-z]+( [0-9]+)? server_tokens /, "", v) }
   v != "off" { on = 1 } f == "/etc/nginx/nginx.conf" && $1 == "http" && v == "off" { ok = 1 }
-  END { exit (!ok ? 2 : (on ? 3 : 0)) }' <<< "$tokens" || rc=$?
-[ "$rc" != 2 ] || { echo 'nginx.conf does not turn server_tokens off' >&2; exit 1; }
-[ "$rc" != 3 ] || { echo 'nginx turns server_tokens on again' >&2; exit 1; }
-[ "$rc" = 0 ]
+  END { exit (!ok ? 3 : (on ? 4 : 0)) }' <<< "$tokens" || rc=$?
+case "$rc" in
+  0) ;;
+  3) echo 'nginx.conf does not turn server_tokens off' >&2; exit 1 ;;
+  4) echo 'nginx turns server_tokens on again' >&2; exit 1 ;;
+  *) echo "server_tokens could not be read (awk exit $rc)" >&2; exit 1 ;;
+esac

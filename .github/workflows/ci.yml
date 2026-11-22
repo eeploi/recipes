@@ -244,6 +244,16 @@ jobs:
           echo "$out"
           grep -qxF 'stack/04-extra.probe.sh: is in no list of probes' <<< "$out"
           rm stack/04-extra.probe.sh
+          sed -i 's/if (c == "#") break/if (c == "#") { break }/' stack/08-nginx.check.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed two nginx readers that differ'; exit 1; fi
+          echo "$out"
+          grep -qxF 'stack/08-nginx.probe.sh: its nginx reader differs from the one in stack/08-nginx.check.sh' <<< "$out"
+          git checkout -q stack/08-nginx.check.sh
+          sed -i '/^# nginx reader, end\./d' stack/08-nginx.probe.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed an nginx reader without an end line'; exit 1; fi
+          echo "$out"
+          grep -qxF 'stack/08-nginx.probe.sh: has more than one nginx reader, or no end line' <<< "$out"
+          git checkout -q stack/08-nginx.probe.sh
           echo '# {ranges}' >> stack/09-logs.sh
           if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
           git checkout -q stack/09-logs.sh

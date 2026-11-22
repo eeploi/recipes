@@ -238,7 +238,6 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Why:** Ubuntu's `nginx.conf` sets `server_tokens build` in `http {}`, and nginx refuses a second `server_tokens` there, so a file of eeploi's own in `conf.d` can't turn it off.
 - **Where:** `stack/08-nginx.sh`, `stack/08-nginx.check.sh`, `stack/08-nginx.probe.sh`
 
-
 ## D-28: One nginx reader, copied into the check and the probe
 
 - **Kind:** decision
