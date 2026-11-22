@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR stops that PR's older run. On main every run finishes, each in a group of its
+# own: one group for main would let a third push cancel the second's pending run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The one Ubuntu 26.04 image both jobs' containers start from, and the one helper release CI reads,
 # with the helper's release key (key id A2C97024AB6219A8), pinned here, not read next to the release.
 env:

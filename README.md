@@ -61,7 +61,7 @@ Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check th
 
 ## CI
 
-Two jobs run on every pull request and every push to `main`.
+Two jobs run on every pull request and every push to `main`. A new push to a pull request stops its older run; a run on `main` always finishes.
 Each test case is a comment in `.github/workflows/ci.yml`, next to the step that runs it.
 
 - **`check`**: the files, the release build and each step on its own.
