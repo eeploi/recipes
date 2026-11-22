@@ -267,8 +267,9 @@ jobs:
       # only the values the helper fills and as the helper runs it: from /, with its PATH and a
       # clean environment. A step whose second run changes /etc fails. The host's kernel modules are mounted
       # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
-      # the services still run after all of them. Then 07's check must fail without its apt
-      # lines: every line of a check counts, not only the last.
+      # the services still run after all of them. Then 07's check must fail with one interface
+      # that sends redirects, and without its apt lines: every line of a check counts, not only the
+      # last.
       - name: always steps, twice, then their checks
         run: |
           docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
@@ -285,8 +286,14 @@ jobs:
             systemctl is-active fail2ban nginx
             bin/run-twice.sh
             systemctl is-active fail2ban nginx
+            bin/render.sh --check stack/07-updates.sh > /tmp/check-07
+            echo 1 > /proc/sys/net/ipv4/conf/lo/send_redirects
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with lo sending redirects"; exit 1; fi
+            grep -qxF "/proc/sys/net/ipv4/conf/lo/send_redirects is not 0" /tmp/out-07
+            echo 0 > /proc/sys/net/ipv4/conf/lo/send_redirects
+            bash /tmp/check-07
             rm /etc/apt/apt.conf.d/20auto-upgrades
-            ! bash <(bin/render.sh --check stack/07-updates.sh)'
+            ! bash /tmp/check-07'
 
       # A step that leaves a unit failed fails bin/run-twice.sh: step 9, in a copy of the repo,
       # with a line more that breaks nginx. Then nginx runs again.
