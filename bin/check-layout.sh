@@ -2,7 +2,8 @@
 # Checks the repo layout: every file in ubuntu-*/steps has a path the helper takes, exists and is no
 # link, and every step in it sets STEP=, has its .check.sh next to it, has one marker in markers
 # and is in the README table.
-# An always step holds only the values the helper fills (bin/render.sh --step).
+# An always step holds only the values the helper fills (bin/render.sh --step). Every D-n a comment
+# names is an entry in DECISIONS.md, numbered in order.
 set -uo pipefail
 export LC_ALL=C # the path rule below matches ASCII only, as the helper's
 cd "$(dirname "$0")/.." || exit 1
@@ -78,6 +79,32 @@ while read -r marker file flags rest || [ -n "$marker" ]; do
     bad "$file" "is always, and holds a value the helper does not fill"
   fi
 done < markers
+
+# DECISIONS.md numbers its entries D-1, D-2 … in order, each once, each heading as `## D-n: title`.
+# Every file an entry's Where names has a D-n comment, and every D-n a comment names (in a script,
+# a workflow, markers or a list of steps) is an entry. Files, not git: the release build runs this
+# in an extracted tree.
+grep -nE '^## D-' DECISIONS.md | grep -vE '^[0-9]+:## D-[0-9]+: ' | while IFS=: read -r line _; do
+  echo "DECISIONS.md:$line: no heading ## D-n: title"
+done | grep . && fail=1
+ids=$(sed -n 's/^## \(D-[0-9]*\): .*/\1/p' DECISIONS.md)
+n=0
+for id in $ids; do
+  n=$((n + 1))
+  [ "$id" = "D-$n" ] || { bad DECISIONS.md "$id where D-$n comes"; break; }
+done
+known=" ${ids//$'\n'/ } "
+while read -r id file; do
+  [ -f "$file" ] || { bad DECISIONS.md "$id: Where names $file, which does not exist"; continue; }
+  grep -qE "#.*$id:" "$file" || bad "$file" "has no $id comment, which DECISIONS.md names it for"
+done < <(awk '/^## D-[0-9]+: / { id = substr($2, 1, length($2) - 1) }
+  /^- \*\*Where:\*\* / { n = split($0, f, "`"); for (i = 2; i <= n; i += 2) print id, f[i] }' DECISIONS.md)
+while IFS=: read -r file line text; do
+  for id in $(grep -oE 'D-[0-9]+:' <<< "${text#*#}" | tr -d :); do
+    case "$known" in *" $id "*) ;; *) bad "${file#./}:$line" "$id is not in DECISIONS.md" ;; esac
+  done
+done < <(grep -rnE --include='*.sh' --include='*.yml' --include=markers --include=steps \
+  --exclude-dir=.git --exclude-dir=dist '#.*D-[0-9]+:' . || true)
 
 [ "$fail" -eq 0 ] && echo "layout ok"
 exit "$fail"

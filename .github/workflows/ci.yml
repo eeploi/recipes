@@ -14,7 +14,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The one Ubuntu 26.04 image both jobs' containers start from, and the one helper release CI reads,
+# The one Ubuntu 26.04 image both jobs' containers start from. D-9: the one helper release CI reads,
 # with the helper's release key (key id A2C97024AB6219A8), pinned here, not read next to the release.
 env:
   UBUNTU_IMAGE: ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
@@ -39,11 +39,12 @@ jobs:
       # [A-Za-z0-9_][A-Za-z0-9._-]*), exists and is no link; each step sets STEP=, has its check
       # (but the two in NO_CHECK, first-boot/00-helper-download.sh and first-boot/11-report.sh),
       # one marker in markers and a row in the README's step table; an always step holds no other
-      # value than {user}, {port}, {php}, {version} and {name}.
+      # value than {user}, {port}, {php}, {version} and {name}; DECISIONS.md numbers its entries in
+      # order, and every D-n a comment names is one of them.
       - name: Layout
         run: bin/check-layout.sh
 
-      # Only prehashed signatures count, as on every server: each minisign -V in ci.yml and bin/
+      # D-1: only prehashed signatures count, as on every server: each minisign -V in ci.yml and bin/
       # has -H, but for a line marked "legacy on purpose". Then a line without -H must fail it.
       - name: minisign -V, prehashed only
         run: |
@@ -201,6 +202,19 @@ jobs:
           if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed {ranges} in an always step'; exit 1; fi
           echo "$out"
           grep -qxF 'stack/09-logs.sh: is always, and holds a value the helper does not fill' <<< "$out"
+          git checkout -q stack/09-logs.sh
+          unknown=D-999 # not written out here, or this file would fail the layout itself
+          echo "# $unknown: not decided" >> stack/09-logs.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed an unknown D-999'; exit 1; fi
+          echo "$out"
+          grep -qE '^stack/09-logs.sh:[0-9]+: D-999 is not in DECISIONS.md$' <<< "$out"
+          git checkout -q stack/09-logs.sh
+          sed -i 's/^## D-2: /## D-3: /' DECISIONS.md
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed D-3 twice'; exit 1; fi
+          echo "$out"
+          grep -qxF 'DECISIONS.md: D-3 where D-2 comes' <<< "$out"
+          git checkout -q DECISIONS.md
+          echo '# {ranges}' >> stack/09-logs.sh
           if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
           git checkout -q stack/09-logs.sh
           mv stack/09-logs.sh stack/09-logs.txt
@@ -507,6 +521,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # D-7: 8.4 stands for every sury.org PHP.
         php: ['8.5', '8.4']
     env:
       GH_TOKEN: ${{ github.token }}
@@ -782,7 +797,7 @@ jobs:
               -p 10022 deploy@127.0.0.1 true
             ssh-keygen -F "[127.0.0.1]:10022" -f /root/known_hosts | grep -q ssh-ed25519'
 
-      # ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
+      # D-8: ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
       - name: server, ssh-audit report
         if: matrix.php == '8.5'
         continue-on-error: true
@@ -844,7 +859,7 @@ jobs:
             rm /etc/apt/sources.list.d/ondrej-ubuntu-php-resolute.sources
             bash /root/check'
 
-      # Lynis, last, on the server as the steps and recipe-run left it: a report to find what we
+      # D-8: Lynis, last, on the server as the steps and recipe-run left it: a report to find what we
       # missed, never a gate. Ubuntu's own package, so nothing from Lynis is copied here. The
       # hardening index, the warnings and the suggestions go to the job summary, and the report
       # and log are kept as an artifact.

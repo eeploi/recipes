@@ -11,6 +11,8 @@ awk '$1 ~ /^#/ { print; next } $5 >= 3071 { print; n++ } END { exit !n }' /etc/s
   || { rm -f "$SSH_MODULI_TMP"; echo 'no moduli of 3072 bits and up in /etc/ssh/moduli, SSH is as it was' >&2; exit 1; }
 chmod 644 "$SSH_MODULI_TMP"
 mv -f "$SSH_MODULI_TMP" /etc/ssh/eeploi-moduli
+# D-3: local forwarding stays, for database tunnels.
+# D-4: NIST curves, SHA-1 and ECDSA removed from the defaults; user keys left alone.
 cat > /etc/ssh/sshd_config.d/00-eeploi.conf <<SSHD
 Port $SSH_PORT
 PermitRootLogin no

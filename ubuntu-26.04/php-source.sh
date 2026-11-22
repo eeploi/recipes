@@ -1,6 +1,7 @@
-# Another PHP than Ubuntu's own: packages.sury.org/php (Ondřej Surý) as a fixed source, with its
-# signing key pinned, 15058500A0235D97F5D10063B188E2B695BD4743 (RSA 3072, from
-# https://packages.sury.org/php/apt.gpg). It replaces the Launchpad PPA, which step 1 removes.
+# D-5: another PHP than Ubuntu's own comes from packages.sury.org/php (Ondřej Surý), a fixed
+# source with its signing key pinned, 15058500A0235D97F5D10063B188E2B695BD4743 (RSA 3072, from
+# https://packages.sury.org/php/apt.gpg; D-12: it expires 2028-02-04). It replaces the Launchpad
+# PPA, which step 1 removes.
 install -d -m 755 /etc/apt/keyrings
 cat > /etc/apt/keyrings/sury-php.asc <<'KEY'
 -----BEGIN PGP PUBLIC KEY BLOCK-----

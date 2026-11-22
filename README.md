@@ -21,6 +21,10 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
 | `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test that each check is read-only (CI), the test of the report to eeploi (CI), the test of the PHP source's retry (CI), and the release command and its build |
 
+## Decisions
+
+[DECISIONS.md](DECISIONS.md) records what was chosen on purpose, and the risks and limits accepted with it, each as `D-n`. A line that a decision shapes says so in a comment (`# D-3: …`). Audits read it first: a finding against an entry is reported as "challenges D-n".
+
 ## Steps
 
 `ubuntu-26.04/steps` lists the files in the order they run, one per line. eeploi joins them with an empty line between each. Without a first boot, for a script printed to run by hand, the `first-boot/` lines are left out.
