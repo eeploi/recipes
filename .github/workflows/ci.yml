@@ -275,8 +275,9 @@ jobs:
       # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
       # the services still run after all of them. Then 07's check must fail with one interface
       # that sends redirects, with Ubuntu's origins added to ours (no #clear; with it, an origin
-      # pattern in an earlier file is cleared), without the conffile options, and without its apt
-      # lines: every line of a check counts, not only the last.
+      # pattern in an earlier file is cleared), without the conffile options, with ctrl-alt-del.target
+      # unmasked, with CtrlAltDelBurstAction back at reboot-force (running, then in the file only),
+      # and without its apt lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
           docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
@@ -310,6 +311,22 @@ jobs:
             rm /etc/apt/apt.conf.d/52eeploi-conffiles
             if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed without confold"; exit 1; fi
             grep -qxF "dpkg: not --force-confdef" /tmp/out-07
+            bash <(bin/render.sh --step stack/07-updates.sh)
+            bash /tmp/check-07
+            systemctl unmask --quiet ctrl-alt-del.target
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with ctrl-alt-del.target unmasked"; exit 1; fi
+            grep -qxF "ctrl-alt-del.target is not masked" /tmp/out-07
+            systemctl mask --quiet ctrl-alt-del.target
+            cad=/etc/systemd/system.conf.d/60-eeploi-ctrl-alt-del.conf
+            sed -i "s/=none$/=reboot-force/" "$cad"
+            systemctl daemon-reexec
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with the burst action reboot-force"; exit 1; fi
+            grep -qxF "CtrlAltDelBurstAction is not none" /tmp/out-07
+            bash <(bin/render.sh --step stack/07-updates.sh)
+            bash /tmp/check-07
+            sed -i "s/=none$/=reboot-force/" "$cad"
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with reboot-force in the file"; exit 1; fi
+            grep -qxF "60-eeploi-ctrl-alt-del.conf: not CtrlAltDelBurstAction=none" /tmp/out-07
             bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
             rm /etc/apt/apt.conf.d/20auto-upgrades
