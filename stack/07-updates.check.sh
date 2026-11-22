@@ -1,8 +1,8 @@
+apt_config=$(apt-config dump)
 # apt runs the security updates.
-apt-config dump | grep '^APT::Periodic::Unattended-Upgrade "1";' >/dev/null # not -q: under pipefail, grep stopping early fails apt-config
+grep -qxF 'APT::Periodic::Unattended-Upgrade "1";' <<< "$apt_config"
 # Security updates only, Ubuntu's own list cleared, and sury.org's exactly when the PHP comes from
 # there; no origin pattern.
-apt_config=$(apt-config dump)
 # shellcheck disable=SC2016 # the ${} is apt's
 origins='Unattended-Upgrade::Allowed-Origins:: "${distro_id}:${distro_codename}-security";'
 # shellcheck disable=SC2016 # the ${} is apt's

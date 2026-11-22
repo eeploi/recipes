@@ -1,23 +1,24 @@
-# 7. Security updates only (and sury.org's PHP), services restarted after one, SCTP, RDS and TIPC blocked, no ICMP
-# redirects, martians logged
+# 7. Security updates only (and sury.org's PHP), services restarted after one, SCTP, RDS and TIPC
+# blocked, no ICMP redirects, martians logged
 STEP='7. Updates and kernel hardening'
 # apt.conf lists add up: #clear empties Ubuntu's list of origins (50unattended-upgrades, which has the
-# release pocket in it too), so security updates only is what is set.
-cat > /etc/apt/apt.conf.d/52eeploi-unattended <<'APT'
-#clear Unattended-Upgrade::Allowed-Origins;
-Unattended-Upgrade::Allowed-Origins { "${distro_id}:${distro_codename}-security"; };
-Unattended-Upgrade::Automatic-Reboot "false";
-APT
+# release pocket in it too) and any origin pattern, so security updates only is what is set.
 # A PHP from packages.sury.org (another PHP than Ubuntu's, php-source.sh) gets its updates too: a
 # deliberate exception to security updates only. sury.org has no security channel of its own, and
 # PHP's security fixes only come as point releases. A server with Ubuntu's PHP doesn't get it.
-if [ -f /etc/apt/sources.list.d/sury-php.sources ]; then
-  cat > /etc/apt/apt.conf.d/53eeploi-sury-php <<'APT'
+{
+  cat <<'APT'
+#clear Unattended-Upgrade::Allowed-Origins;
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Allowed-Origins { "${distro_id}:${distro_codename}-security"; };
+Unattended-Upgrade::Automatic-Reboot "false";
+APT
+  if [ -f /etc/apt/sources.list.d/sury-php.sources ]; then
+    cat <<'APT'
 Unattended-Upgrade::Allowed-Origins { "deb.sury.org:${distro_codename}"; };
 APT
-else
-  rm -f /etc/apt/apt.conf.d/53eeploi-sury-php
-fi
+  fi
+} > /etc/apt/apt.conf.d/52eeploi-unattended
 # A package update keeps a config file eeploi changed (www.conf, for one) and takes the package's new
 # one where nobody changed it. Without this, unattended-upgrades holds such a package back, its
 # security fixes too, and apt-get in a later step would ask.
