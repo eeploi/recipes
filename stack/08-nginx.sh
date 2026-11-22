@@ -1,5 +1,5 @@
 # 8. nginx: room for large headers, no default site, a catch-all that refuses the TLS handshake for
-#    unknown hosts; the old config comes back when nginx refuses the new one
+#    unknown hosts; the old config comes back when nginx refuses the new one or doesn't reload
 STEP='8. nginx'
 # The files this step changes stay aside until nginx takes the new config, and come back if it
 # doesn't: a live server keeps serving its sites. A copy left aside by a run that was cut off is the

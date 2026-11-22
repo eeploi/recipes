@@ -5,3 +5,5 @@ cat > /etc/nginx/conf.d/cloudflare.conf <<'NGINX'
 {real_ip}
 real_ip_header CF-Connecting-IP;
 NGINX
+# A range nginx can't read fails here, not in step 8, whose rollback doesn't hold this file.
+nginx -t

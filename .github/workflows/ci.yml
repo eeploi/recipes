@@ -394,7 +394,9 @@ jobs:
             mkdir -p /etc/nginx/eeploi.prev/etc/nginx/sites-available
             echo "# old" > /etc/nginx/eeploi.prev/etc/nginx/sites-available/catch-all
             if bash /tmp/step; then echo "step 8 passed with a broken file"; exit 1; fi
-            [ "$(cat $f)" = "# old" ] && [ ! -e /etc/nginx/sites-enabled/catch-all ] && [ ! -e /etc/nginx/eeploi.prev ]
+            [ "$(cat $f)" = "# old" ]
+            [ ! -e /etc/nginx/sites-enabled/catch-all ]
+            [ ! -e /etc/nginx/eeploi.prev ]
             rm /etc/nginx/conf.d/broken.conf
             bash /tmp/step
             mkdir -p /etc/systemd/system/nginx.service.d
@@ -731,7 +733,7 @@ jobs:
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without
       # ssl_reject_handshake, with a certificate in it, or with the old key or certificate back.
-      # The real IP check fails without the header line or without a range.
+      # The real IP check fails without the header line, without a range, or with a line nginx refuses.
       - name: server, the nginx catch-all
         run: |
           docker exec server bash -euc '
@@ -763,6 +765,8 @@ jobs:
             check=/root/real-ip-check saved=/root/cloudflare.conf target=$c
             sed -i "/^real_ip_header/d" "$c"; fails "no header" "cloudflare.conf: not real_ip_header CF-Connecting-IP"
             sed -i "/^set_real_ip_from/d" "$c"; fails "no ranges" "cloudflare.conf: no set_real_ip_from"
+            echo "set_real_ip_from 192.0.2.0/24;" > "$c"; echo "real_ip_header CF-Connecting-IP;" >> "$c"; echo "set_real_ip_from x" >> "$c"
+            fails "a range nginx refuses" "test failed"
             bash /root/real-ip-check'
 
       # The deploy user logs in with OpenSSH's own client, as eeploi does, with its ed25519 key: the
