@@ -1,10 +1,17 @@
 # 7. Security updates only, services restarted after one, SCTP, RDS and TIPC blocked, no ICMP
 # redirects, martians logged
 STEP='7. Updates and kernel hardening'
+# apt.conf lists add up: #clear empties Ubuntu's list of origins (50unattended-upgrades, which has the
+# release pocket in it too), so security updates only is what is set.
 cat > /etc/apt/apt.conf.d/52eeploi-unattended <<'APT'
+#clear Unattended-Upgrade::Allowed-Origins;
 Unattended-Upgrade::Allowed-Origins { "${distro_id}:${distro_codename}-security"; };
 Unattended-Upgrade::Automatic-Reboot "false";
 APT
+# A package update keeps a config file eeploi changed (www.conf, for one) and takes the package's new
+# one where nobody changed it. Without this, unattended-upgrades holds such a package back, its
+# security fixes too, and apt-get in a later step would ask.
+printf 'Dpkg::Options { "--force-confdef"; "--force-confold"; };\n' > /etc/apt/apt.conf.d/52eeploi-conffiles
 printf 'APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 ' > /etc/apt/apt.conf.d/20auto-upgrades

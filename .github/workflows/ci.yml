@@ -268,8 +268,8 @@ jobs:
       # clean environment. A step whose second run changes /etc fails. The host's kernel modules are mounted
       # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
       # the services still run after all of them. Then 07's check must fail with one interface
-      # that sends redirects, and without its apt lines: every line of a check counts, not only the
-      # last.
+      # that sends redirects, with Ubuntu's origins added to ours (no #clear), without the conffile
+      # options, and without its apt lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
           docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
@@ -291,6 +291,16 @@ jobs:
             if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with lo sending redirects"; exit 1; fi
             grep -qxF "/proc/sys/net/ipv4/conf/lo/send_redirects is not 0" /tmp/out-07
             echo 0 > /proc/sys/net/ipv4/conf/lo/send_redirects
+            bash /tmp/check-07
+            cp /etc/apt/apt.conf.d/52eeploi-unattended /tmp/52eeploi-unattended
+            sed -i "/^#clear/d" /etc/apt/apt.conf.d/52eeploi-unattended
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with the Ubuntu origins added up"; exit 1; fi
+            grep -qxF "unattended-upgrades: not security updates only" /tmp/out-07
+            cp /tmp/52eeploi-unattended /etc/apt/apt.conf.d/52eeploi-unattended
+            rm /etc/apt/apt.conf.d/52eeploi-conffiles
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed without confold"; exit 1; fi
+            grep -qxF "dpkg: not --force-confdef" /tmp/out-07
+            bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash /tmp/check-07'
