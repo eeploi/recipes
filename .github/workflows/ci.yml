@@ -381,25 +381,11 @@ jobs:
               rm -f /etc/written
             done'
 
-      # php-source.sh in a fresh container, with apt-get failing and sleep only noted: three fails
-      # pass after three waits of 60 s; one that keeps failing stops after ten waits, eleven tries,
-      # with the message as its last line. Each try updates the sury.org source only.
+      # php-source.sh in a fresh container, as it writes /etc/apt, with apt-get, date and sleep
+      # stubbed: a sync error is tried again for ten minutes, another error stops at once
+      # (bin/test-php-source.sh).
       - name: PHP source, apt-get update tried again
-        run: |
-          docker run --rm -v "$PWD:/recipes:ro" -w /recipes twice bash -euc '
-            mkdir /tmp/bin
-            printf "%s\n" "#!/bin/bash" "echo \"\$*\" >> /tmp/tries" "[ \$(wc -l < /tmp/tries) -gt \$FAILS ]" > /tmp/bin/apt-get
-            printf "%s\n" "#!/bin/bash" "echo \"\$*\" >> /tmp/sleeps" > /tmp/bin/sleep
-            chmod +x /tmp/bin/*
-            sed "s/{codename}/resolute/g" ubuntu-26.04/php-source.sh > /tmp/php-source.sh
-            run() { rm -f /tmp/tries /tmp/sleeps; FAILS=$1 PATH=/tmp/bin:$PATH bash -euo pipefail /tmp/php-source.sh; }
-            counts() { [ "$(wc -l < /tmp/tries)" = "$1" ] && [ "$(wc -l < /tmp/sleeps)" = "$2" ] && [ "$(sort -u /tmp/sleeps)" = 60 ] \
-              && [ "$(sort -u /tmp/tries)" = "update -q -o Dir::Etc::SourceList=/etc/apt/sources.list.d/sury-php.sources -o Dir::Etc::SourceParts=- -o APT::Get::List-Cleanup=0" ]; }
-            run 3
-            counts 4 3
-            if out=$(run 99 2>&1); then echo "$out"; echo "php-source.sh passed with apt-get failing"; exit 1; fi
-            counts 11 10
-            [ "$(tail -n 1 <<< "$out")" = "The PHP source is updating; try again later." ]'
+        run: docker run --rm -v "$PWD:/recipes:ro" -w /recipes twice bin/test-php-source.sh
 
       # The fingerprint prints only known facts, in the container and on the runner, a real VM,
       # and leaves /etc as it was.
