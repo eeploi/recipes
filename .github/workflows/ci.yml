@@ -153,6 +153,13 @@ jobs:
           if out=$(RECIPES_DIR=$k/x bin/build-release.sh 99.0.0 0.1.0 example 2>&1); then echo "$out"; echo 'RECIPES_DIR taken without --verify'; exit 1; fi
           [ "$out" = 'RECIPES_DIR is for --verify only' ]
 
+      # bin/release.sh against a fake GitHub (a gh stub, a local origin, a test key): a draft whose
+      # files don't verify stays a draft, a failed publish says whether it is still a draft, published
+      # or unknown, and a release is published from its checked draft, which makes the tag. Also the
+      # build from a commit, the same bytes as from its tag. Needs minisign, installed above.
+      - name: release.sh, against a fake GitHub
+        run: bin/test-release.sh
+
       # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper
       # release HELPER_TAG. The provider name rule in bin/build-release.sh and bin/release.sh is
       # the one recipe-run checks there, so a release never holds a provider the helper refuses;

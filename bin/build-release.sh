@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Builds a release from its tag, not from the working copy: the package (the files a server runs,
 # as a tar.gz) and a manifest per provider and Ubuntu release, in dist/VERSION/. Signs nothing.
+# RECIPES_COMMIT builds it from that commit instead, before the tag exists: bin/release.sh does, and
+# publishing the release makes the tag (D-21). A tag of this version on another commit is refused.
 # bin/release.sh runs it, signs and publishes; run on its own, it is for CI and for a look.
 # With --verify it builds the same release again and changes nothing: dist/VERSION/ must hold
 # exactly those files, the same bytes, and a .minisig per manifest that verifies the bytes built
@@ -28,7 +30,17 @@ for provider; do
   [[ "$provider" =~ $provider_name ]] || { echo "$provider is no provider name: a-z, 0-9 and inner -, at most 32" >&2; exit 2; }
 done
 tag=v$version
-git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag is no tag" >&2; exit 1; }
+# ref: what the release is built from; src: how the messages name it.
+if [ -n "${RECIPES_COMMIT:-}" ]; then
+  ref=$(git rev-parse -q --verify "$RECIPES_COMMIT^{commit}") || { echo "$RECIPES_COMMIT is no commit" >&2; exit 1; }
+  tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+  [ -z "$tagged" ] || [ "$tagged" = "$ref" ] || { echo "$tag is on another commit than $RECIPES_COMMIT" >&2; exit 1; }
+  src="commit $(git rev-parse --short "$ref")"
+else
+  git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag is no tag" >&2; exit 1; }
+  ref=$tag
+  src=$tag
+fi
 out=dist/$version
 if [ -n "${RECIPES_DIR:-}" ]; then
   [ -n "$verify" ] || { echo "RECIPES_DIR is for --verify only" >&2; exit 2; }
@@ -48,41 +60,42 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 build=$tmp/out
 mkdir "$build" "$tmp/tree"
-git archive "$tag" | tar -x -C "$tmp/tree"
+git archive "$ref" | tar -x -C "$tmp/tree"
 # The manifest takes its file names and values from these. bash drops a NUL when it reads a line,
 # here and in the helper, so a NUL in them would change a name or value unseen. Then every path
 # the manifest will hold, before bin/check-layout.sh reads them.
 for file in "$tmp"/tree/ubuntu-*/steps "$tmp"/tree/ubuntu-*/probes "$tmp/tree/markers"; do
-  [ -f "$file" ] || { echo "${file#"$tmp/tree/"} is not in $tag" >&2; exit 1; }
+  [ -f "$file" ] || { echo "${file#"$tmp/tree/"} is not in $src" >&2; exit 1; }
   # shellcheck disable=SC2094 # both only read it
-  tr -d '\000' < "$file" | cmp -s - "$file" || { echo "${file#"$tmp/tree/"} in $tag holds a NUL" >&2; exit 1; }
+  tr -d '\000' < "$file" | cmp -s - "$file" || { echo "${file#"$tmp/tree/"} in $src holds a NUL" >&2; exit 1; }
 done
 # The entries of a list of steps or probes: every line but comments and empty ones.
 entries() { grep -vE '^(#|$)' "$1" || true; }
 path_ok() { [[ "$1" =~ $path_name ]] || { echo "$1 is no path the helper takes: each part $part" >&2; exit 1; }; }
 for list in "$tmp"/tree/ubuntu-*/steps; do
   path_ok "$(basename "$(dirname "$list")")/php-source.sh"
-  [ -f "${list%/steps}/probes" ] || { echo "${list#"$tmp/tree/"}: no probes next to it in $tag" >&2; exit 1; }
+  [ -f "${list%/steps}/probes" ] || { echo "${list#"$tmp/tree/"}: no probes next to it in $src" >&2; exit 1; }
   while IFS= read -r file; do path_ok "$file"; done < <(entries "$list"; entries "${list%/steps}/probes")
 done
-"$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
+"$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$src fails bin/check-layout.sh" >&2; exit 1; }
 
-# The release tags up to this one, in version order.
-tags=()
-while IFS= read -r t; do
-  [[ "$t" =~ ^v${semver#^} ]] || continue
-  tags+=("$t")
-  [ "$t" != "$tag" ] || break
-done < <(git tag -l 'v*' --sort=v:refname)
+# The release versions up to this one, in version order: each read from its tag, this one from $ref.
+releases=()
+while IFS= read -r v; do
+  releases+=("$v")
+  [ "$v" != "$version" ] || break
+done < <({ git tag -l 'v*' | sed -n 's/^v//p' | grep -E "$semver" || true; echo "$version"; } | sort -t. -k1,1n -k2,2n -k3,3n | uniq)
 
 # The release a file came in, and the first release since which it is the same as in this one.
 versions() {
-  local now t blob introduced='' changed=''
-  now=$(git rev-parse "$tag:$1")
-  for t in "${tags[@]}"; do
-    blob=$(git rev-parse -q --verify "$t:$1") || blob=''
-    if [ -n "$blob" ] && [ -z "$introduced" ]; then introduced=${t#v}; fi
-    if [ "$blob" != "$now" ]; then changed=''; elif [ -z "$changed" ]; then changed=${t#v}; fi
+  local now v r blob introduced='' changed=''
+  now=$(git rev-parse "$ref:$1")
+  for v in "${releases[@]}"; do
+    r=v$v
+    [ "$v" != "$version" ] || r=$ref
+    blob=$(git rev-parse -q --verify "$r:$1") || blob=''
+    if [ -n "$blob" ] && [ -z "$introduced" ]; then introduced=$v; fi
+    if [ "$blob" != "$now" ]; then changed=''; elif [ -z "$changed" ]; then changed=$v; fi
   done
   echo "$introduced $changed"
 }
@@ -115,7 +128,7 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
   # A while loop, not mapfile: bin/release.sh runs this in macOS's bash 3.2 too.
   while IFS= read -r file; do probes+=("$file"); done < <(entries "$tmp/tree/$os/probes")
   for file in "$os/php-source.sh" stack/fingerprint.sh; do
-    [ -f "$tmp/tree/$file" ] || { echo "$file is not in $tag" >&2; exit 1; }
+    [ -f "$tmp/tree/$file" ] || { echo "$file is not in $src" >&2; exit 1; }
   done
   for file in "${files[@]}" "${checks[@]}" ${probes[@]+"${probes[@]}"} "$os/php-source.sh" stack/fingerprint.sh; do
     echo "file $(sha "$file") $file"
@@ -133,19 +146,19 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
   done
 done
 
-# One package for every manifest: each file once, in a fixed order, so the same tag builds the same bytes.
+# One package for every manifest: each file once, in a fixed order, so the same commit builds the same bytes.
 # Only plain files: the package would hold a link where the manifest has its target's SHA-256.
 sorted=()
 while IFS= read -r path; do sorted+=("$path"); done < <(printf '%s\n' "${paths[@]}" | LC_ALL=C sort -u)
 listed=0
 while read -r mode _ _ path; do
-  case "$mode" in 100644 | 100755) ;; *) echo "$path in $tag is no plain file (mode $mode)" >&2; exit 1 ;; esac
+  case "$mode" in 100644 | 100755) ;; *) echo "$path in $src is no plain file (mode $mode)" >&2; exit 1 ;; esac
   listed=$((listed + 1))
-done < <(git --literal-pathspecs ls-tree -r "$tag" -- "${sorted[@]}")
-[ "$listed" -eq "${#sorted[@]}" ] || { echo "git ls-tree lists $listed of ${#sorted[@]} files in $tag" >&2; exit 1; }
-git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$tag" "${sorted[@]}"
+done < <(git --literal-pathspecs ls-tree -r "$ref" -- "${sorted[@]}")
+[ "$listed" -eq "${#sorted[@]}" ] || { echo "git ls-tree lists $listed of ${#sorted[@]} files in $src" >&2; exit 1; }
+git archive --format=tar.gz -o "$build/recipes-$version.tar.gz" "$ref" "${sorted[@]}"
 
-# What goes up is what this tag builds, and each signature is the recipes key's over those bytes.
+# What goes up is what this commit builds, and each signature is the recipes key's over those bytes.
 # minisign refuses a signature whose key id is not the public key's, so a manifest signed with
 # another key fails here, not on every server.
 # A link is refused too: what goes up would be its target. D-1: so is a legacy signature (algorithm
@@ -155,23 +168,23 @@ if [ -n "$verify" ]; then
   { for f in "$build"/*; do echo "${f##*/}"; done; for f in "$build"/*.manifest; do echo "${f##*/}.minisig"; done; } | sort > "$tmp/want"
   (cd "$out" && find . -mindepth 1 -maxdepth 1 | sed 's|^\./||' | sort) > "$tmp/have"
   { comm -23 "$tmp/want" "$tmp/have" | sed 's/^/missing: /'; comm -13 "$tmp/want" "$tmp/have" | sed 's/^/not built: /'; } > "$tmp/diff"
-  [ ! -s "$tmp/diff" ] || { echo "$out holds other files than $tag builds, with a .minisig per manifest:" >&2; cat "$tmp/diff" >&2; exit 1; }
+  [ ! -s "$tmp/diff" ] || { echo "$out holds other files than $src builds, with a .minisig per manifest:" >&2; cat "$tmp/diff" >&2; exit 1; }
   plain_file() { if [ ! -f "$1" ] || [ -L "$1" ]; then echo "$1 is no plain file" >&2; exit 1; fi; }
   for f in "$build"/*; do
     plain_file "$out/${f##*/}"
-    cmp -s "$f" "$out/${f##*/}" || { echo "$out/${f##*/} is not the file $tag builds" >&2; exit 1; }
+    cmp -s "$f" "$out/${f##*/}" || { echo "$out/${f##*/} is not the file $src builds" >&2; exit 1; }
   done
   for f in "$build"/*.manifest; do
     sig=$out/${f##*/}.minisig
     plain_file "$sig"
     case $(sed -n 2p "$sig") in RU[Q-T]*) ;; *) echo "$sig is no prehashed signature (ED): sign without -l" >&2; exit 1 ;; esac
-    minisign -V -H -q -p "$pub" -m "$f" -x "$sig" || { echo "$sig does not verify the manifest $tag builds against $pub" >&2; exit 1; }
+    minisign -V -H -q -p "$pub" -m "$f" -x "$sig" || { echo "$sig does not verify the manifest $src builds against $pub" >&2; exit 1; }
   done
-  echo "Verified $tag ($(git rev-parse "$tag^{commit}")) in $out against $pub:"
+  echo "Verified $src ($(git rev-parse "$ref^{commit}")) in $out against $pub:"
   [ "$pub" = minisign.pub ] || echo "NOT the recipes key in minisign.pub: RECIPES_PUB is set" >&2
 else
   mkdir -p dist
   mv "$build" "$out"
-  echo "Built $tag ($(git rev-parse "$tag^{commit}")) in $out:"
+  echo "Built $src ($(git rev-parse "$ref^{commit}")) in $out:"
 fi
 ls -1 "$out"
