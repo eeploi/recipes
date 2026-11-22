@@ -1,6 +1,6 @@
 # 7. Security updates only, services restarted after one, SCTP, RDS and TIPC blocked, no ICMP
 # redirects, martians logged
-STEP='7. Security updates only'
+STEP='7. Updates and kernel hardening'
 cat > /etc/apt/apt.conf.d/52eeploi-unattended <<'APT'
 Unattended-Upgrade::Allowed-Origins { "${distro_id}:${distro_codename}-security"; };
 Unattended-Upgrade::Automatic-Reboot "false";
