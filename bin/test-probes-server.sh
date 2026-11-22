@@ -3,8 +3,8 @@
 # nginx server block (in a quoted ; and a comment too, and in a file after one whose } # and quote
 # inside a word would put a reading out of step with nginx's), a PHP-FPM pool and ini file, apt's config,
 # SSH's, MariaDB's and a UFW rule's comment; Redis with a password, an IP banned, and eeploi's
-# addresses in fail2ban's ignore list. With a sury.org
-# PHP, PostgreSQL too, its password in a conf.d file: not with Ubuntu's PHP, whose server the
+# addresses in fail2ban's ignore list. With a sury.org PHP, PostgreSQL too, its password in a
+# conf.d file: not with Ubuntu's PHP, whose server the
 # ssh-audit and Lynis reports read after this. bin/test-probes.sh must pass, with none of
 # them in the output and the lines expected. Then a probe with a line more that prints a secret,
 # writes to /etc, or writes to stderr must fail it. The server is as it was after, also on a failure.

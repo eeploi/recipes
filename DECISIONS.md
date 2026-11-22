@@ -193,7 +193,7 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** decision
 - **Decided:** 2026-11-22, #46
-- **What:** `eeploi-trusted.conf` (fail2ban's `ignoreip`, `{trusted_ips}`) is written by `stack/06-fail2ban-trusted.sh`, a `window` step. Step 6's jail file and its check stay as they are. The file adds its addresses to what fail2ban already ignores (`%(known/ignoreip)s`), under `[DEFAULT]`, so every jail ignores them, `recidive` too. Another list, such as the server owner's, would get a file of its own that adds itself the same way; none is built.
+- **What:** `eeploi-trusted.conf` (fail2ban's `ignoreip`, `{trusted_ips}`) is written by `stack/06-fail2ban-trusted.sh`, a `window` step. Step 6's jail file and its check stay as they are. The file sets `ignoreip` under `[DEFAULT]`, so every jail ignores the addresses, `recidive` too: localhost (`127.0.0.1/8 ::1`, fail2ban's own default), then the list. Another list, such as the server owner's, would get a file of its own that adds itself with `%(known/ignoreip)s`; none is built. eeploi's file can't add itself that way: with no `ignoreip` before it, fail2ban refuses the config.
 - **Why:** as D-15: eeploi fills in `{trusted_ips}` at the first boot, and an `always` step holds only the values the helper fills. A file per list shows on the server which address came from whom. Rejected: the list in `recipes.conf`, which needs a helper change and a new key there.
 - **Accepted:** an address in the list is never banned, by any jail, on any port.
 - **Where:** `stack/06-fail2ban-trusted.sh`
@@ -202,7 +202,7 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** decision
 - **Decided:** 2026-11-22, #46
-- **What:** each entry is one address: IPv4 bare or `/32`, IPv6 bare or `/128`. A range, a host name or anything else is refused, by the step before it writes and by its check. An empty list is valid.
+- **What:** each entry is one address: IPv4 bare or `/32`, IPv6 bare or `/128`, and IPv4 never written as IPv6 (`::ffff:…`). A range, a host name or anything else is refused, by the step before it writes and by its check. An empty list is valid.
 - **Why:** a range in an ignore list switches fail2ban off for every address in it; `0.0.0.0/0` would switch it off entirely. eeploi's own addresses are single ones.
 - **Where:** `stack/06-fail2ban-trusted.sh`, `stack/06-fail2ban-trusted.check.sh`
 
@@ -210,6 +210,6 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** known limit
 - **Decided:** 2026-11-22, #46
-- **What:** `stack/06-fail2ban-trusted.sh` is a `window` step, and `recipe-run` runs only `always` steps. A server keeps the list it got at its first boot. Run again with another list, the step replaces that file only.
+- **What:** `stack/06-fail2ban-trusted.sh` is a `window` step. `recipe-run` runs only `always` steps, and the manual "update now" for `window` steps isn't built. A server keeps the list it got at its first boot. Run again with another list, the step replaces that file only.
 - **Why:** a way to change the list on a live server is a later design.
 - **Where:** `stack/06-fail2ban-trusted.sh`

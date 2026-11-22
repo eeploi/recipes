@@ -2,12 +2,13 @@
 f=/etc/fail2ban/jail.d/eeploi-trusted.conf
 if [ ! -f "$f" ] || [ -L "$f" ]; then echo 'eeploi-trusted.conf: not there' >&2; exit 1; fi
 [ "$(stat -c '%U:%G %a' "$f")" = 'root:root 644' ] || { echo 'eeploi-trusted.conf: not root:root 644' >&2; exit 1; }
-# The file is the one the step writes: [DEFAULT], and the addresses added to what fail2ban ignores.
+# The file is the one the step writes, byte for byte: [DEFAULT], localhost, then the addresses.
 line=$(sed -n 2p "$f")
-read -ra trusted <<< "${line#'ignoreip = %(known/ignoreip)s'}"
-[ "$(cat "$f")" = "$(printf '[DEFAULT]\nignoreip = %%(known/ignoreip)s%s' "${trusted[*]:+ ${trusted[*]}}")" ] \
+read -ra trusted <<< "${line#'ignoreip = 127.0.0.1/8 ::1'}"
+cmp -s "$f" <(printf '[DEFAULT]\nignoreip = 127.0.0.1/8 ::1%s\n' "${trusted[*]:+ ${trusted[*]}}") \
   || { echo 'eeploi-trusted.conf: not the file the step writes' >&2; exit 1; }
-# D-23: one address each, IPv4 bare or /32, IPv6 bare or /128. An empty list is valid.
+# D-23: one address each, IPv4 bare or /32, IPv6 bare or /128, no IPv4 written as IPv6. An empty
+# list is valid.
 python3 -I -c '
 import ipaddress, re, sys
 for n, a in enumerate(sys.argv[1:], 1):
@@ -16,7 +17,7 @@ for n, a in enumerate(sys.argv[1:], 1):
         ip = ipaddress.ip_address(m[1]) if m else None
     except ValueError:
         ip = None
-    if ip is None or m[2] not in (None, str(ip.max_prefixlen)):
+    if ip is None or m[2] not in (None, str(ip.max_prefixlen)) or getattr(ip, "ipv4_mapped", None):
         sys.exit("eeploi-trusted.conf: address %d is not one IPv4 or IPv6 address" % n)' ${trusted[@]+"${trusted[@]}"}
 # fail2ban accepts its config, and no old file is left aside.
 fail2ban-client -t > /dev/null
