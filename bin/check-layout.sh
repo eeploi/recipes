@@ -3,7 +3,7 @@
 # link, and every step in it sets STEP=, has its .check.sh next to it, has one marker in markers
 # and is in the README table.
 # An always step holds only the values the helper fills (bin/render.sh --step). Each list of steps
-# has a list of probes, whose probes are named, listed and in the README as below. Every D-n a
+# has a list of probes, whose probes are named, listed and in PROBES.md as below. Every D-n a
 # comment names is an entry in DECISIONS.md, numbered in order.
 set -uo pipefail
 export LC_ALL=C # the path rule below matches ASCII only, as the helper's
@@ -55,7 +55,7 @@ done
 
 # Every list of steps has a list of probes next to it. Each probe in it has a path the helper
 # takes, exists, is no link, is named NN-name.probe.sh with a name no other probe in the list has,
-# holds no {name} value (nothing fills it) and is in the README's probe table. Every probe in the
+# holds no {name} value (nothing fills it) and is in the probe table in PROBES.md. Every probe in the
 # repo is in a list.
 listed=' '
 for steps in ubuntu-*/steps; do
@@ -73,7 +73,7 @@ for steps in ubuntu-*/steps; do
     listed+="$file "
     # shellcheck disable=SC2016 # the $ is in a regex
     ! grep -qE '(^|[^$A-Za-z0-9_])\{[a-z_]+\}' "$file" || bad "$file" "holds a {name} value, which nothing fills in a probe"
-    grep -qF "\`$file\`" README.md || bad "$file" "is not in the README probe table"
+    grep -qF "\`$file\`" PROBES.md || bad "$file" "is not in the probe table in PROBES.md"
   done < "$list"
 done
 while IFS= read -r file; do

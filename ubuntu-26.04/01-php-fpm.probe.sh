@@ -2,7 +2,7 @@
 # Probe: PHP-FPM, each version installed. Per pool the settings FPM reads, after every pool file
 # (php-fpm<v> -tt), and a few PHP settings FPM's PHP reads, after every ini file (php-fpm<v> -i).
 # Those in the lists only: a pool's env[] and php_value[] can hold secrets. No PHP-FPM: no lines.
-# README, Probes.
+# PROBES.md.
 # Lines: pool <version> <pool> <setting> <value>, ini <version> <setting> <value>.
 set -euo pipefail
 pool_safe=(user group listen listen.owner listen.group listen.mode pm pm.max_children pm.max_requests)

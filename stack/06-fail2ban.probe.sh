@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Probe: fail2ban. Whether it runs, and per jail its counts. D-18: counts only, never an address.
-# No fail2ban: no lines. README, Probes.
+# No fail2ban: no lines. PROBES.md.
 # Lines: running <yes|no>, jail <name> banned <n> total-banned <n> failed <n> total-failed <n>.
 set -euo pipefail
 # The settings whose values are safe to show (jail.local, jail.d). Not ignoreip: addresses.

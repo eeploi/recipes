@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Probe: SSH. The settings sshd reads, after every drop-in (sshd -T), those in the list only.
 # Lines: <setting> <value>, in sshd -T's lower case; hostkey once per key. No sshd: no lines.
-# README, Probes.
+# PROBES.md.
 set -euo pipefail
 # The settings whose values are safe to show. sshd takes them in any case.
 safe=(port listenaddress addressfamily permitrootlogin passwordauthentication kbdinteractiveauthentication

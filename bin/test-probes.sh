@@ -36,17 +36,20 @@ while IFS= read -r file; do
   name=${file##*/}
   name=${name#[0-9][0-9]-}
   name=${name%.probe.sh}
+  # Both runs' output is checked; the second is shown.
+  : > "$tmp/$name.all"
   for run in 1 2; do
     rc=0
     as_helper "$PWD/$file" > "$tmp/$name.out" 2> "$tmp/$name.err" || rc=$?
     [ "$rc" -eq 0 ] || bad "$file" "exits $rc (run $run)"
     [ ! -s "$tmp/$name.err" ] || { bad "$file" "writes to stderr (run $run):"; cat "$tmp/$name.err"; }
+    cat "$tmp/$name.out" "$tmp/$name.err" >> "$tmp/$name.all"
   done
   echo "== $name"
   cat "$tmp/$name.out"
-  if grep -vnE '^[a-z][a-z0-9_-]* [[:print:]]*[^[:space:]]$' "$tmp/$name.out"; then bad "$file" "prints the lines above, not <key> <value>"; fi
+  if grep -vnE '^[a-z][a-z0-9_-]* [[:print:]]*[^[:space:]]$' "$tmp/$name.all"; then bad "$file" "prints the lines above, not <key> <value>"; fi
   for secret in ${secrets[@]+"${secrets[@]}"}; do
-    if grep -qF -- "$secret" "$tmp/$name.out" "$tmp/$name.err"; then bad "$file" "prints the secret $secret"; fi
+    if grep -qF -- "$secret" "$tmp/$name.all"; then bad "$file" "prints the secret $secret"; fi
   done
   if [ -n "$empty_except" ] && [[ $empty_except != *",$name,"* ]] && [ -s "$tmp/$name.out" ]; then
     bad "$file" "prints lines without its software"

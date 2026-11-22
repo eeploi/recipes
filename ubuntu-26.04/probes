@@ -1,4 +1,4 @@
-# The probes for Ubuntu 26.04, in the order a report shows them. README, Probes.
+# The probes for Ubuntu 26.04, in the order a report shows them. PROBES.md.
 # D-16: one per piece of software, reading what the software itself reads.
 stack/04-ssh.probe.sh
 stack/05-ufw.probe.sh

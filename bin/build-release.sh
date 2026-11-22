@@ -96,6 +96,7 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
   body=$tmp/$os.body
   files=()
   checks=()
+  probes=()
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
     name=${file##*/}

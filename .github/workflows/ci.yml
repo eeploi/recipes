@@ -193,7 +193,8 @@ jobs:
           for provider in a "$long"; do [ -f "dist/99.0.2/recipes-99.0.2-$provider-ubuntu-26.04.manifest" ]; done
 
       # In a copy of the tree: an always step with a value the helper does not fill fails the
-      # layout, and does not render to run on its own. A step that is a link fails the layout, as does
+      # layout, and does not render to run on its own. A probe not in PROBES.md fails the layout,
+      # as does a probe file in no list of probes. A step that is a link fails the layout, as does
       # a file in the list with a path the helper refuses, and a link to php-source.sh, which the
       # layout doesn't read, fails the release.
       - name: layout and release, refused
@@ -216,6 +217,16 @@ jobs:
           echo "$out"
           grep -qxF 'DECISIONS.md: D-3 where D-2 comes' <<< "$out"
           git checkout -q DECISIONS.md
+          sed -i '/stack\/04-ssh.probe.sh/d' PROBES.md
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a probe not in PROBES.md'; exit 1; fi
+          echo "$out"
+          grep -qxF 'stack/04-ssh.probe.sh: is not in the probe table in PROBES.md' <<< "$out"
+          git checkout -q PROBES.md
+          cp stack/04-ssh.probe.sh stack/04-extra.probe.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a probe in no list'; exit 1; fi
+          echo "$out"
+          grep -qxF 'stack/04-extra.probe.sh: is in no list of probes' <<< "$out"
+          rm stack/04-extra.probe.sh
           echo '# {ranges}' >> stack/09-logs.sh
           if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
           git checkout -q stack/09-logs.sh

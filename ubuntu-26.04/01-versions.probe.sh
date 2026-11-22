@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Probe: versions. The packages installed of nginx, PHP-FPM, PostgreSQL, MariaDB, MySQL, Redis,
 # Node.js, npm and Composer, and the npm and Composer step 1 installs in /usr/local, read from
-# their files: neither runs. None of them: no lines. README, Probes.
+# their files: neither runs. None of them: no lines. PROBES.md.
 # Lines: package <name> <version>, npm <version>, composer <version>.
 set -euo pipefail
 # No settings.

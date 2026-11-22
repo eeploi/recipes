@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Probe: Redis. Where redis-server listens, and whether it asks for a password. D-19: Redis prints
 # its config only to a client that logs in, so no setting is read. No Redis: no lines.
-# README, Probes.
+# PROBES.md.
 # Lines: listen <address:port> for each, or listen none; password <yes|no|unknown>, from a PING to
 # the first address, without a password.
 set -euo pipefail

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Probe: the firewall, UFW. What ufw says it runs with: on or off, the defaults and the rules,
-# without their comments. No ufw: no lines. README, Probes.
+# without their comments. No ufw: no lines. PROBES.md.
 # Lines: status <active|inactive>, logging <level>, default <policies>, rule <to> <action> <from>.
 set -euo pipefail
 # The settings whose values are safe to show (/etc/default/ufw, /etc/ufw/ufw.conf).

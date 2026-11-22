@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Probe: MariaDB or MySQL. A few server options, as the server reads them, after every included
 # file (mariadbd or mysqld --print-defaults): for each the last value, as the server takes it.
-# Those in the list only. No MariaDB or MySQL server: no lines. README, Probes.
-# Lines: option <name> <value>, the name with - for _; on for an option without a value.
+# Those in the list only. No MariaDB or MySQL server: no lines. PROBES.md.
+# Lines: option <name> <value>, the name with - for _; on for an option without a value, off for
+# one turned off with skip- or disable-. loose- is left out, as the server does.
 set -euo pipefail
 # The settings whose values are safe to show. The server takes - and _ alike.
 safe=(bind-address port skip-networking local-infile max-connections require-secure-transport skip-name-resolve)
@@ -22,6 +23,11 @@ tail -n +2 <<< "$defaults" | tr ' ' '\n' | awk -v safe="${safe[*]}" '
     name = substr($0, 3); value = "on"
     if (index(name, "=")) { value = substr(name, index(name, "=") + 1); name = substr(name, 1, index(name, "=") - 1) }
     gsub(/_/, "-", name)
+    sub(/^loose-/, "", name)
+    if (!(name in known)) {
+      if (name ~ /^(skip|disable)-/) { sub(/^[a-z]+-/, "", name); value = "off" }
+      else if (name ~ /^enable-/) { sub(/^enable-/, "", name); value = "on" }
+    }
     if (name in known && value != "") last[name] = value
   }
   END { for (i = 1; i <= n; i++) if (order[i] in last) print "option " order[i] " " last[order[i]] }'

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # The probes on a whole server, as CI builds one, with secrets planted where a probe reads: in an
-# nginx server block (in a quoted ; and a comment too), a PHP-FPM pool and ini file, apt's config,
-# SSH's, MariaDB's and a UFW rule's comment; Redis with a password, and an IP banned. With Ubuntu's
-# PHP, PostgreSQL too, its password in a conf.d file. bin/test-probes.sh must pass, with none of
+# nginx server block (in a quoted ; and a comment too, and in a file after one whose } # and quote
+# inside a word would put a reading out of step with nginx's), a PHP-FPM pool and ini file, apt's config,
+# SSH's, MariaDB's and a UFW rule's comment; Redis with a password, and an IP banned. With a sury.org
+# PHP, PostgreSQL too, its password in a conf.d file: not with Ubuntu's PHP, whose server the
+# ssh-audit and Lynis reports read after this. bin/test-probes.sh must pass, with none of
 # them in the output and the lines expected. Then a probe with a line more that prints a secret,
 # writes to /etc, or writes to stderr must fail it. The server is as it was after, also on a failure.
 # For CI only, as root, in the server container.
@@ -17,12 +19,14 @@ restore() {
   rm -f ${planted[@]+"${planted[@]}"} /etc/written
   [ ! -f /root/www.conf ] || cp /root/www.conf "$www"
   if [ -f /root/redis.conf ]; then cp /root/redis.conf /etc/redis/redis.conf; systemctl restart redis-server; fi
+  rm -f /root/www.conf /root/redis.conf
+  [ -z "${copy:-}" ] || rm -rf "$copy"
   ufw delete allow 8082/tcp > /dev/null || true
   fail2ban-client set sshd unbanip 203.0.113.7 > /dev/null || true
 }
 trap restore EXIT
 
-if [ "$php" = 8.5 ]; then
+if [ "$php" != 8.5 ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -yq postgresql > /dev/null
   for d in /etc/postgresql/*/main/conf.d; do
     echo "primary_conninfo = 'host=db.example password=PLANTED-pg'" | plant "$d/99-planted.conf"
@@ -34,6 +38,15 @@ server {
     server_name planted.example;
     add_header X-Planted "a; listen PLANTED-nginx-quote";
     fastcgi_param APP_KEY PLANTED-nginx-param; # listen PLANTED-nginx-comment
+    add_header X-A}# "
+    server_tokens "
+    ;
+}
+NGINX
+plant /etc/nginx/conf.d/zz-planted.conf <<'NGINX'
+server {
+    listen 8083;
+    location / { fastcgi_param DB_PASSWORD PLANTED-nginx-later; }
 }
 NGINX
 nginx -t 2> /dev/null
@@ -60,7 +73,7 @@ for expect in 'ssh:^port 10022$' 'ssh:^permitrootlogin no$' 'ssh:^passwordauthen
   'apt:^updates [0-9]+$' 'apt:^security-updates [0-9]+$' \
   'kernel:^module sctp blocked not-loaded$' 'kernel:^sysctl net[.]ipv4[.]conf[.][*][.]send_redirects 0$' \
   'nginx:^server [0-9]+ ssl_reject_handshake on$' 'nginx:^server [0-9]+ listen 443 ssl default_server$' \
-  'nginx:^server [0-9]+ server_name planted[.]example$' 'nginx:^server [0-9]+ listen 8081$' \
+  'nginx:^server [0-9]+ server_name planted[.]example$' 'nginx:^server [0-9]+ listen 8081$' 'nginx:^server [0-9]+ listen 8083$' \
   'nginx:^http fastcgi_buffer_size 32k$' 'nginx:^http real_ip_header CF-Connecting-IP$' \
   "php-fpm:^pool $php www pm[.]max_children 2\$" "php-fpm:^pool $php www listen[.]mode 0600\$" \
   "php-fpm:^ini $php expose_php Off\$" "php-fpm:^ini $php opcache[.]validate_permission On\$" \
@@ -69,7 +82,7 @@ for expect in 'ssh:^port 10022$' 'ssh:^permitrootlogin no$' 'ssh:^passwordauthen
   "versions:^npm ${npm#npm@}\$" "versions:^composer $composer\$"; do
   args+=(--expect "$expect")
 done
-[ "$php" != 8.5 ] || args+=(--expect 'postgresql:^cluster [0-9]+/main port 5432$' --expect 'postgresql:^cluster [0-9]+/main listen_addresses localhost$')
+[ "$php" = 8.5 ] || args+=(--expect 'postgresql:^cluster [0-9]+/main port 5432$' --expect 'postgresql:^cluster [0-9]+/main listen_addresses localhost$')
 bin/test-probes.sh "${args[@]}"
 
 copy=$(mktemp -d)
@@ -80,5 +93,4 @@ for line in 'echo leak PLANTED-x' 'touch /etc/written' 'echo oops >&2'; do
   if out=$("$copy/recipes/bin/test-probes.sh" --secret PLANTED); then echo "$out"; echo "a probe with $line passed"; exit 1; fi
   rm -f /etc/written
 done
-rm -rf "$copy"
 echo 'probes on the server ok'

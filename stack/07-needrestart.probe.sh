@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Probe: needrestart. Whether the kernel, the CPU microcode or a service waits for a restart, in
 # needrestart's batch mode, listing only: it restarts nothing. No needrestart: no lines.
-# README, Probes.
+# PROBES.md.
 # Lines: kernel <current|abi-upgrade|upgrade|unknown>, kernel-running <version>,
 # kernel-expected <version>, microcode <current|obsolete|unknown>, service <unit>.
 set -euo pipefail
@@ -12,7 +12,8 @@ safe=('$nrconf{restart}' '$nrconf{kernelhints}' '$nrconf{ucodehints}')
 
 command -v needrestart > /dev/null || exit 0
 out=$(needrestart -b -r l 2> /dev/null) || [ -n "$out" ] || exit 1
-awk '$1 == "NEEDRESTART-KCUR:" { print "kernel-running " $2 }
+awk 'NF < 2 { next }
+  $1 == "NEEDRESTART-KCUR:" { print "kernel-running " $2 }
   $1 == "NEEDRESTART-KEXP:" { print "kernel-expected " $2 }
   $1 == "NEEDRESTART-KSTA:" { s = $2 == 1 ? "current" : $2 == 2 ? "abi-upgrade" : $2 == 3 ? "upgrade" : "unknown"; print "kernel " s }
   $1 == "NEEDRESTART-UCSTA:" { s = $2 == 1 ? "current" : $2 == 2 ? "obsolete" : "unknown"; print "microcode " s }

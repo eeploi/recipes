@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Probe: apt. The update settings apt reads, after every file (apt-config dump), and the updates
-# waiting. No apt: no lines. README, Probes.
+# waiting. No apt: no lines. PROBES.md.
 # Lines: allowed-origin, origin-pattern, dpkg-option, automatic-reboot, periodic-update-package-lists,
 # periodic-unattended-upgrade <value>; updates <n>, security-updates <n>, lists-updated <UTC time>.
 set -euo pipefail
