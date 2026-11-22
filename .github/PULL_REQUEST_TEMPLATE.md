@@ -1,4 +1,4 @@
-<!-- Remove these comments before publishing. A security problem never goes here: see .github/SECURITY.md. No server names, IP addresses or secrets. -->
+<!-- A security problem never goes here: see .github/SECURITY.md. No server names, IP addresses or secrets. -->
 
 ## Summary
 
@@ -10,8 +10,7 @@
 
 ## Validation
 
-<!-- The exact checks and their results: bash -n, shellcheck, bin/check-layout.sh, bin/render.sh, and CI.
-Say which checks failed or didn't run; a skipped check is not a pass. -->
+<!-- The checks in .github/CONTRIBUTING.md and CI, with their results. Say which failed or didn't run. -->
 
 ## Limitations
 
