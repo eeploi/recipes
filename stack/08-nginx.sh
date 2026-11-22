@@ -25,6 +25,7 @@ nginx_restore() {
   rm -rf "$nginx_prev"
 }
 # The old config back, taken by a running nginx again, and the step fails.
+# D-14: another failure in between restores on the next run.
 nginx_refused() {
   nginx_restore
   systemctl try-reload-or-restart nginx || true

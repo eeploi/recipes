@@ -13,6 +13,7 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - One entry per decision, numbered `D-1`, `D-2` and so on. A number is never reused or renumbered.
 - **Kind** is `decision`, `accepted risk` or `known limit`.
+- **Accepted**, when present, names what a decision costs.
 - **Decided** gives the date and the issue or pull request in this repo.
 - **Where** names the files the entry shapes, if any. The line it shapes carries a comment `# D-n: …`. `bin/check-layout.sh` fails on a `D-n` comment without an entry here, and on a file in **Where** without its comment.
 - A changed decision is a new entry. The old one stays, with **Replaced by** `D-n`.
@@ -121,3 +122,19 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **What:** step 8 restores its old config when `nginx -t` or the reload fails. A reload command that succeeds only means nginx got the signal. If nginx then can't apply the config (a port it can't bind, for one), the step still reports success.
 - **Why:** nginx reports that only in its error log, which is a fragile thing to parse. `nginx -t` catches config errors before the reload.
 - **Where:** `stack/08-nginx.sh`
+
+## D-14: A failure halfway through step 8 restores on the next run
+
+- **Kind:** known limit
+- **Decided:** 2026-11-22, #5 (PR #59)
+- **What:** step 8 restores its old config only when `nginx -t` or the reload fails. If another command fails in between (a full disk, for one), the step stops with its files half written and the copy still in `/etc/nginx/eeploi.prev`. The next run takes that copy as the old config, and the check fails while it is there.
+- **Why:** a running nginx keeps its loaded config until a reload, so sites keep working meanwhile. A trap for every failure would also catch the steps that run after this one in the same script.
+- **Where:** `stack/08-nginx.sh`
+
+## D-15: The real visitor IPs are a step of their own
+
+- **Kind:** decision
+- **Decided:** 2026-11-22, #5 (PR #59)
+- **What:** `cloudflare.conf` (the `set_real_ip_from` lines, `{real_ip}`) is written by `stack/08-real-ip.sh`, a `window` step. The rest of the nginx config is step 8, an `always` step.
+- **Why:** eeploi fills in `{real_ip}` at the first boot. On a live server the helper fills only `{user}`, `{port}`, `{php}`, `{version}` and `{name}`, so a step that holds `{real_ip}` can't be `always`. Rejected: step 8 with a rollback but staying `window`; Cloudflare's ranges in the values file, which needs a helper change. A later option is #61: the lines from `{ranges}`.
+- **Where:** `stack/08-real-ip.sh`
