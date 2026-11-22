@@ -324,9 +324,9 @@ jobs:
             bash <(bin/render.sh --check stack/06-fail2ban.sh)
             systemctl is-active fail2ban'
 
-      # The checks of steps 6 and 9 fail on their new lines: another SSH port in the jail, another
-      # user in the log path or the su line. Then each step writes its file again and its check
-      # passes.
+      # The checks of steps 6 and 9 fail on their new lines: another SSH port in the jail, a jail
+      # file without growing bans, the recidive jail or its values, another user in the log path or
+      # the su line. Then each step writes its file again and its check passes.
       - name: checks of 6 and 9, the values
         run: |
           docker exec twice bash -euc '
@@ -340,6 +340,10 @@ jobs:
               bash /tmp/check
             }
             fails stack/06-fail2ban.sh /etc/fail2ban/jail.d/eeploi.conf "s/^port = .*/port = 10023/" "port = \$SSH_PORT"
+            for change in "/^bantime.increment/d" "/^bantime.maxtime/d" "/^\[recidive\]/,\$d" \
+              "/^\[recidive\]/,\$ s/^enabled = true/enabled = false/" "/^findtime/d"; do
+              fails stack/06-fail2ban.sh /etc/fail2ban/jail.d/eeploi.conf "$change" "eeploi'"'"'s jail is not the one step 6 writes"
+            done
             fails stack/09-logs.sh /etc/logrotate.d/eeploi "s|^/home/deploy/|/home/other/|" "/home/\$DEPLOY_USER"
             fails stack/09-logs.sh /etc/logrotate.d/eeploi "s/^    su .*/    su root root/" "su \$DEPLOY_USER"'
 
