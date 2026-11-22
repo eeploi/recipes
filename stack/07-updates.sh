@@ -1,5 +1,5 @@
 # 7. Security updates only (and sury.org's PHP), services restarted after one, SCTP, RDS and TIPC
-# blocked, no ICMP redirects, martians logged
+# blocked, no ICMP redirects, martians logged, no restart by Ctrl+Alt+Del
 STEP='7. Updates and kernel hardening'
 # apt.conf lists add up: #clear empties Ubuntu's list of origins (50unattended-upgrades, which has the
 # release pocket in it too) and any origin pattern, so security updates only is what is set: Ubuntu's
@@ -57,3 +57,12 @@ net.ipv4.conf.all.log_martians = 1
 net.ipv4.conf.default.log_martians = 1
 SYSCTL
 /usr/lib/systemd/systemd-sysctl /etc/sysctl.d/60-eeploi-network.conf
+# Ctrl+Alt+Del in a provider's web console doesn't restart the server: one keystroke there could
+# cut off a first boot halfway. Masking the target stops one press; CtrlAltDelBurstAction=none stops
+# more than seven within two seconds, which otherwise force a reboot. A planned restart (systemctl reboot, the
+# provider's reboot) still works. systemd reads the drop-in when it starts, so it starts again here,
+# only when the running value isn't none yet.
+systemctl mask --quiet ctrl-alt-del.target
+mkdir -p /etc/systemd/system.conf.d
+printf '[Manager]\nCtrlAltDelBurstAction=none\n' > /etc/systemd/system.conf.d/60-eeploi-ctrl-alt-del.conf
+[ "$(systemctl show -p CtrlAltDelBurstAction --value)" = none ] || systemctl daemon-reexec
