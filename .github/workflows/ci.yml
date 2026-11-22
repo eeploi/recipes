@@ -332,17 +332,6 @@ jobs:
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash /tmp/check-07'
 
-      # TEMP, to be removed: getty@tty1 in the twice container, for the flake.
-      - name: TEMP getty diagnostics
-        if: always()
-        run: |
-          docker exec twice bash -c '
-            ls -l /dev/tty0 /dev/tty1 /dev/console || true
-            systemctl status --no-pager -l getty@tty1 console-getty serial-getty@ttyS0 || true
-            systemctl show -p NRestarts,Result,ActiveState getty@tty1 || true
-            journalctl -b --no-pager -u getty@tty1 | tail -60 || true
-            journalctl -b --no-pager | grep -iE "tty1|getty|vhangup" | tail -40 || true'
-
       # A step that leaves a unit failed fails bin/run-twice.sh: step 9, in a copy of the repo,
       # with a line more that breaks nginx. Then nginx runs again.
       - name: twice, a step that fails a unit
