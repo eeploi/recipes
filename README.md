@@ -1,10 +1,10 @@
-# eeploi recipes
-
 <p align="center">
 <a href="https://github.com/eeploi/recipes/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/eeploi/recipes/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
 <a href="https://github.com/eeploi/recipes/releases/latest"><img src="https://img.shields.io/github/v/release/eeploi/recipes" alt="Latest release"></a>
 <a href="LICENSE.md"><img src="https://img.shields.io/github/license/eeploi/recipes" alt="License"></a>
 </p>
+
+# eeploi recipes
 
 ## About
 
@@ -171,11 +171,11 @@ Each server eeploi builds records that commit and SHA-256.
 
 ## Contributing
 
-Thank you for considering a contribution. [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) says how.
+Thank you for considering a contribution. The [contribution guide](.github/CONTRIBUTING.md) says how.
 
 ## Security Vulnerabilities
 
-Please report a security problem privately, as [`.github/SECURITY.md`](.github/SECURITY.md) describes, never in a public issue.
+Please report a security problem privately, as the [security policy](.github/SECURITY.md) describes, never in a public issue.
 
 ## License
 
