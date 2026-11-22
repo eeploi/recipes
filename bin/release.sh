@@ -155,6 +155,7 @@ case "$key" in /*) ;; *) fail "RECIPES_KEY must be an absolute path: $key" ;; es
 ok "key $key_pub_id, the same as minisign.pub"
 [ -z "$release_found" ] || fail "$REPO already has a release $tag, maybe a draft: releases are immutable"
 ok "no release $tag yet, no draft either"
+# D-21: releases and v* tags can't be changed; a fix is a new version.
 [ "$immutable_on" = true ] || fail "$REPO does not have immutable releases on"
 ok "immutable releases on"
 [ ! -e "$out" ] || fail "$out exists from an earlier run: remove it first (rm -r $out)"
