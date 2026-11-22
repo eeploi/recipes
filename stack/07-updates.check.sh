@@ -19,7 +19,7 @@ done
 shopt -s nullglob
 for key in /proc/sys/net/ipv4/conf/*/accept_redirects /proc/sys/net/ipv6/conf/*/accept_redirects \
   /proc/sys/net/ipv4/conf/*/send_redirects; do
-  read -r value < "$key" 2>/dev/null || continue
+  read -r value 2>/dev/null < "$key" || continue
   [ "$value" = 0 ] || { echo "$key is not 0" >&2; exit 1; }
 done
 for key in /proc/sys/net/ipv4/conf/all/log_martians /proc/sys/net/ipv4/conf/default/log_martians; do
