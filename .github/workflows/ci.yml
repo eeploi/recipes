@@ -18,7 +18,7 @@ concurrency:
 # with the helper's release key (key id A2C97024AB6219A8), pinned here, not read next to the release.
 env:
   UBUNTU_IMAGE: ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
-  HELPER_TAG: v1.1.0
+  HELPER_TAG: v1.2.0
   HELPER_PUBKEY: RWSoGWKrJHDJoknVaEcX3dz5ew9zWZPqae2Qn2d3M+SGxNBT99NZGiLA
 
 jobs:
@@ -897,10 +897,21 @@ jobs:
 
       # The probes on the whole server, with secrets planted where a probe reads and an IP banned:
       # none of them shows, the lines expected do, and a probe that leaks, writes to /etc or to
-      # stderr fails the test (bin/test-probes-server.sh). The server is as it was after, for the
-      # reports below.
-      - name: server, the probes
+      # stderr fails the test (bin/test-probes-server.sh). With them still planted, the helper's
+      # server-report and server-report --json, each twice, through sudo as the deploy user: exit
+      # 0, the JSON parses, set up by eeploi, every kept check ran and passed, every kept probe ran,
+      # ok or not-installed, no line refused, no secret shown, and /etc, fail2ban and nginx the
+      # same after (bin/test-server-report.sh). The server is as it was after, for the reports below.
+      - name: server, the probes and server-report
         run: docker exec server bin/test-probes-server.sh
+
+      # The text report from above, for people to read.
+      - name: server, server-report in the summary
+        if: ${{ !cancelled() }}
+        run: |
+          { echo "## server-report, PHP $RENDER_PHP (with the test's planted secrets and banned IP)"; echo; echo '```'
+            docker exec server cat /root/server-report.txt || echo '(no report: the test above stopped before it)'
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       # D-8: ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
       - name: server, ssh-audit report

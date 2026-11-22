@@ -8,7 +8,10 @@
 # --check runs step 1 only: no key, no build, nothing published.
 # The secret key is ~/.minisign/eeploi-recipes.key, or RECIPES_KEY when set; its public key must
 # be next to it (.pub) and the same as minisign.pub.
-# Usage: bin/release.sh [--check] VERSION MIN_HELPER PROVIDER...   such as bin/release.sh 0.4.3 1.1.0 example
+# It takes no values: the version, the helper and the providers come from main's head. The version is the top version heading in
+# CHANGELOG.md, under an empty "## Unreleased". The helper it needs is HELPER_TAG in
+# .github/workflows/ci.yml, the one CI tested. The providers are the lines of providers.
+# Usage: bin/release.sh [--check]
 set -euo pipefail
 export LC_ALL=C
 cd "$(dirname "$0")/.."
@@ -19,24 +22,8 @@ STEPS=8
 key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
 check_only=
 [ "${1:-}" != --check ] || { check_only=1; shift; }
-usage="Usage: bin/release.sh [--check] VERSION MIN_HELPER PROVIDER..."
-[ "$#" -ge 3 ] || { echo "$usage" >&2; exit 2; }
-version=$1
-min_helper=$2
-shift 2
-providers=("$@")
-semver='^[0-9]+\.[0-9]+\.[0-9]+$'
-[[ "$version" =~ $semver ]] || { echo "$version is no version, such as 0.4.3" >&2; exit 2; }
-[[ "$min_helper" =~ $semver ]] || { echo "$min_helper is no helper version, such as 1.1.0" >&2; exit 2; }
+[ "$#" -eq 0 ] || { echo "Usage: bin/release.sh [--check]: the version, helper and providers come from main's head" >&2; exit 2; }
 provider_name='^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$' # the helper's rule, as bin/build-release.sh
-for provider in "${providers[@]}"; do
-  [[ "$provider" =~ $provider_name ]] || { echo "$provider is no provider name: a-z, 0-9 and inner -, at most 32" >&2; exit 2; }
-done
-tag=v$version
-title="eeploi-recipes $version"
-out=dist/$version
-
-undo="check it with gh release view $tag -R $REPO, delete it with gh release delete $tag -R $REPO, then run this again"
 
 step=0
 drafted=
@@ -141,11 +128,58 @@ for cmd in git gh minisign base64 od paste; do
   command -v "$cmd" >/dev/null || fail "$cmd is not installed"
 done
 
+# changelog_version <file>: the version of its top version heading. The first heading is
+# "## Unreleased", with nothing under it but empty lines; the next is "## VERSION", that version.
+changelog_version() {
+  awk '
+    function stop(why) { print why; code = 1; exit }
+    /^## / {
+      n++
+      if (n == 1) { if ($0 != "## Unreleased") stop("the first heading is not ## Unreleased"); next }
+      v = substr($0, 4)
+      if (v !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) stop("the heading after ## Unreleased is not ## VERSION, such as ## 0.6.0")
+      print v; found = 1; exit
+    }
+    n == 1 && NF { stop("## Unreleased is not empty: move its lines under a version") }
+    END {
+      if (code) exit code
+      if (!n) { print "no ## Unreleased heading"; exit 1 }
+      if (!found) { print "no ## VERSION heading after ## Unreleased"; exit 1 }
+    }
+  ' "$1"
+}
+# helper_tag <file>: the version of the one HELPER_TAG line in CI's workflow, v and all.
+helper_tag() {
+  local lines
+  lines=$(grep -E '^ *HELPER_TAG:' "$1" || true)
+  [ "$(grep -c . <<< "$lines")" = 1 ] || { echo "not one HELPER_TAG line"; return 1; }
+  [[ $lines =~ ^\ +HELPER_TAG:\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || { echo "HELPER_TAG is not vN.N.N: $lines"; return 1; }
+  echo "${BASH_REMATCH[1]}"
+}
+
 # What the header shows, read first: nothing changes but the fetch of main.
 git fetch -q origin main
 branch=$(git branch --show-current)
 head=$(git rev-parse HEAD)
 short=$(git rev-parse --short "$head")
+# D-26: the version, the helper and the providers, from the commit released, never from arguments.
+git show "$head:CHANGELOG.md" > "$work/changelog" 2>/dev/null || fail "no CHANGELOG.md at $short"
+version=$(changelog_version "$work/changelog") || fail "CHANGELOG.md: $version"
+git show "$head:.github/workflows/ci.yml" > "$work/ci.yml" 2>/dev/null || fail "no .github/workflows/ci.yml at $short"
+min_helper=$(helper_tag "$work/ci.yml") || fail ".github/workflows/ci.yml: $min_helper"
+git show "$head:providers" > "$work/providers" 2>/dev/null || fail "no providers file at $short"
+providers=()
+while IFS= read -r provider || [ -n "$provider" ]; do
+  case $provider in ''|'#'*) continue ;; esac
+  [[ "$provider" =~ $provider_name ]] || fail "providers: $provider is no provider name: a-z, 0-9 and inner -, at most 32"
+  for p in ${providers[@]+"${providers[@]}"}; do [ "$p" != "$provider" ] || fail "providers: $provider is there twice"; done
+  providers+=("$provider")
+done < "$work/providers"
+[ "${#providers[@]}" -gt 0 ] || fail "providers: no provider"
+tag=v$version
+title="eeploi-recipes $version"
+out=dist/$version
+undo="check it with gh release view $tag -R $REPO, delete it with gh release delete $tag -R $REPO, then run this again"
 clean=; [ -n "$(git status --porcelain)" ] || clean=1
 synced=; [ "$head" != "$(git rev-parse origin/main)" ] || synced=1
 tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)

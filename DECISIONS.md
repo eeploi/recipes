@@ -220,3 +220,12 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Decided:** 2026-11-22, #46
 - **What:** fail2ban takes one `ignoreip` under `[DEFAULT]`, and a later file replaces it. A second list in a file of its own, such as the server owner's, can't add itself to eeploi's that way. How a second list gets in is open; none is built.
 - **Why:** fail2ban's `%(known/ignoreip)s` doesn't reach a value set in another `jail.d` file under `[DEFAULT]`.
+
+## D-26: A release takes its values from the commit it releases
+
+- **Kind:** decision
+- **Decided:** 2026-11-22
+- **What:** `bin/release.sh` takes no version, helper or providers. The version is the top `## VERSION` heading in `CHANGELOG.md`, under an empty `## Unreleased`; the helper it needs (`min-helper`) is `HELPER_TAG` in CI's workflow; the providers are the lines of `providers`. All three are read from the commit it releases, with strict patterns, and a value it can't read stops it. Any argument but `--check` is refused.
+- **Why:** three values typed by hand are easy to get wrong, and a wrong one can't be undone (D-21). A release claims only the helper CI tested it with, and its changes are written down before it goes out.
+- **Accepted:** a new version or provider needs a commit, reviewed in a pull request, before it can be released.
+- **Where:** `bin/release.sh`

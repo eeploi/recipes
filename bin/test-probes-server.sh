@@ -6,7 +6,8 @@
 # addresses in fail2ban's ignore list. With a sury.org PHP, PostgreSQL too, its password in a
 # conf.d file: not with Ubuntu's PHP, whose server the
 # ssh-audit and Lynis reports read after this. bin/test-probes.sh must pass, with none of
-# them in the output and the lines expected. Then a probe with a line more that prints a secret,
+# them in the output and the lines expected, and so must the helper's server-report
+# (bin/test-server-report.sh). Then a probe with a line more that prints a secret,
 # writes to /etc, or writes to stderr must fail it. The server is as it was after, also on a failure.
 # For CI only, as root, in the server container.
 set -euo pipefail
@@ -66,7 +67,8 @@ fail2ban-client set sshd banip 203.0.113.7 > /dev/null
 composer=$(COMPOSER_ALLOW_SUPERUSER=1 composer --version --no-plugins --no-interaction 2> /dev/null | awk '{ print $3; exit }')
 npm=$(grep -o 'npm@[0-9.]*$' /root/by-hand.sh)
 # eeploi's addresses (bin/render.sh), in the ignore list of every jail, never show either.
-args=(--secret PLANTED --secret 203.0.113.7 --secret 203.0.113.10 --secret 2001:db8::10)
+secrets=(--secret PLANTED --secret 203.0.113.7 --secret 203.0.113.10 --secret 2001:db8::10)
+args=("${secrets[@]}")
 # shellcheck disable=SC2016 # the ${} is apt's
 for expect in 'ssh:^port 10022$' 'ssh:^permitrootlogin no$' 'ssh:^passwordauthentication no$' 'ssh:^allowusers deploy$' \
   'ufw:^status active$' 'ufw:^rule 10022/tcp ALLOW IN Anywhere$' 'ufw:^rule 8082/tcp ALLOW IN Anywhere$' \
@@ -86,6 +88,8 @@ for expect in 'ssh:^port 10022$' 'ssh:^permitrootlogin no$' 'ssh:^passwordauthen
 done
 [ "$php" = 8.5 ] || args+=(--expect 'postgresql:^cluster [0-9]+/main port 5432$' --expect 'postgresql:^cluster [0-9]+/main listen_addresses localhost$')
 bin/test-probes.sh "${args[@]}"
+# The helper's report, with the same secrets planted: the probes and checks recipe-run kept.
+bin/test-server-report.sh "${secrets[@]}"
 
 copy=$(mktemp -d)
 cp -a . "$copy/recipes"
