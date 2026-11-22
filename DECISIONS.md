@@ -138,3 +138,44 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **What:** `cloudflare.conf` (the `set_real_ip_from` lines, `{real_ip}`) is written by `stack/08-real-ip.sh`, a `window` step. The rest of the nginx config is step 8, an `always` step.
 - **Why:** eeploi fills in `{real_ip}` at the first boot. On a live server the helper fills only `{user}`, `{port}`, `{php}`, `{version}` and `{name}`, so a step that holds `{real_ip}` can't be `always`. Rejected: step 8 with a rollback but staying `window`; Cloudflare's ranges in the values file, which needs a helper change. A later option is #61: the lines from `{ranges}`.
 - **Where:** `stack/08-real-ip.sh`
+
+## D-16: Probes, one per piece of software
+
+- **Kind:** decision
+- **Decided:** 2026-11-22, #63
+- **What:** a probe (`NN-name.probe.sh`, listed in `ubuntu-*/probes`) prints the settings in effect for one piece of software, as `<key> <value>` lines. It detects its software first: not there, no lines and exit 0. It reads what the software itself reads after every drop-in (`sshd -T`, `nginx -T`, `php-fpm -tt`), not the files one by one, and prints only the keys in its own list. `--safe` names the settings whose values are safe to show. A probe takes no values from `recipes.conf` and writes nothing. Its stderr is not part of its output, and a probe that fails says so only by its exit status. npm's and Composer's versions are read from their files: a probe runs neither.
+- **Why:** the same probe reads a server the steps set up and one they didn't, whoever wrote the files. The software's own reading is what it will run with. A fixed list of keys keeps secrets out; an error message could quote a config line, so it is not shown.
+- **Accepted:** a setting a probe doesn't list is not shown, even where it matters; a new one is a new release.
+- **Where:** `ubuntu-26.04/probes`
+
+## D-17: Probes read the config on disk
+
+- **Kind:** known limit
+- **Decided:** 2026-11-22, #63
+- **What:** as D-11 for the checks: `sshd -T`, `nginx -T`, `php-fpm -tt`, `postgres -C` and `mariadbd --print-defaults` read the config files, not what the running daemon loaded. A change not yet reloaded shows as if it were in effect.
+- **Why:** none of them reports its running config without a login. The steps reload or restart after a change.
+- **Where:** `stack/04-ssh.probe.sh`, `stack/08-nginx.probe.sh`, `ubuntu-26.04/01-php-fpm.probe.sh`, `ubuntu-26.04/01-postgresql.probe.sh`, `ubuntu-26.04/01-mysql.probe.sh`
+
+## D-18: fail2ban shows counts, never addresses
+
+- **Kind:** decision
+- **Decided:** 2026-11-22, #63
+- **What:** the fail2ban probe prints per jail the banned and failed counts, each as a number. The list of banned IPs is never printed, nor `ignoreip` among the safe settings.
+- **Why:** a banned IP is a visitor's address: personal data, of no use in a report.
+- **Where:** `stack/06-fail2ban.probe.sh`
+
+## D-19: Redis shows where it listens, no settings
+
+- **Kind:** known limit
+- **Decided:** 2026-11-22, #63
+- **What:** the Redis probe prints the addresses redis-server listens on (`ss`) and whether a `PING` without a password gets an answer. It shows none of Redis's settings.
+- **Why:** Redis has no command that prints its config without connecting, and with a password set, connecting needs that password. Reading `redis.conf` would be reading the file, and the file holds the password.
+- **Where:** `ubuntu-26.04/01-redis.probe.sh`
+
+## D-20: Waiting updates as of the last package list update
+
+- **Kind:** known limit
+- **Decided:** 2026-11-22, #63
+- **What:** the apt probe counts the updates waiting from the package lists on the server, by a simulated upgrade. It doesn't update the lists. The count is as old as `lists-updated` says.
+- **Why:** a probe needs no network. apt updates the lists daily on its own (step 7).
+- **Where:** `stack/07-apt.probe.sh`

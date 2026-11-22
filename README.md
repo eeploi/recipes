@@ -16,10 +16,10 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 
 | Folder | Holds |
 |---|---|
-| `stack/` | The steps every Ubuntu release shares: apt retries, the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start |
-| `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the packages (`01-packages.sh`) and the source for another PHP version than Ubuntu's (`php-source.sh`) |
+| `stack/` | The steps every Ubuntu release shares: apt retries, the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start; and their probes |
+| `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the list of probes (`probes`), the packages (`01-packages.sh`) and their probes, and the source for another PHP version than Ubuntu's (`php-source.sh`) |
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
-| `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test that each check is read-only (CI), the test of the report to eeploi (CI), the test of the PHP source's retry (CI), and the release command and its build |
+| `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test that each check is read-only (CI), the test of the report to eeploi (CI), the test of the PHP source's retry (CI), the tests of the probes (CI), and the release command and its build |
 
 ## Decisions
 
@@ -52,7 +52,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 
 `php-source.sh` adds packages.sury.org/php (Ondřej Surý) as a fixed source for another PHP than Ubuntu's own (8.3 and 8.4 on 26.04), with its signing key (15058500A0235D97F5D10063B188E2B695BD4743) pinned, and removes the Launchpad PPA, which has no builds for 26.04. When `apt-get update` of that source fails with a sync error, as while packages.sury.org syncs its mirrors, it tries again every 60 seconds for ten minutes, then stops step 1 with "The PHP source is updating; try again later." Any other error stops step 1 at once, with apt's first error.
 
-`stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the reports to eeploi and the values. Nor is `stack/fingerprint.sh` (Fingerprint), which is not part of a server's script.
+`stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the reports to eeploi and the values. Nor is `stack/fingerprint.sh` (Fingerprint), which is not part of a server's script, nor are the probes ([PROBES.md](PROBES.md)).
 
 ## Markers
 
@@ -74,6 +74,10 @@ Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check th
 
 The lock-root check needs root's password locked. Once step 0 has locked it (`/etc/eeploi/root-locked`, root's), a password the owner set later (Reset root password, Set a new root password) passes too, with the note "root has a password (set after the first boot); root can't log in over SSH". No password never passes.
 
+## Probes
+
+A probe, one per piece of software, prints the settings in effect, for a report. [PROBES.md](PROBES.md) has the format, the probes and their lines, and their limits.
+
 ## CI
 
 Two jobs run on every pull request and every push to `main`.
@@ -90,6 +94,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   In a fresh Ubuntu 26.04 container, each `always` step runs twice as the helper runs it, leaves `/etc` the same on the second run, fails no unit, and passes its check.
   Each check is read-only, and where `ci.yml` tests it, fails without what its step writes.
   The fingerprint prints only known facts.
+  In a fresh Ubuntu 26.04 container without the software, each probe prints nothing but the apt and kernel ones, and no error.
 - **`server`**: a whole server, built as eeploi builds one, passes the helper's own `recipe-run`, with Ubuntu's own PHP and with a PHP from packages.sury.org.
   The helper is the release CI pins, with only its recipes key and its release address changed for a test key and a local server.
   `recipe-run` on a release built in CI ends `result ok` twice, the second time with every step the same, and fails when a check fails.
@@ -99,6 +104,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   nginx refuses the TLS handshake for an unknown host.
   The deploy user logs in with OpenSSH's client and a key, as eeploi does, and gets the ed25519 host key.
   ssh-audit reports on SSH's crypto, a report only.
+  Each probe, run twice as the helper runs it, leaves `/etc` the same, prints only `<key> <value>` lines and the lines expected, and never a secret planted in the config files or a banned IP.
   The PHP source's pinned key is the one apt checks it with.
   Last, Lynis audits the server with Ubuntu's PHP: its hardening index, warnings and suggestions go to the job summary and the report is kept, a report only, never a failure.
 
@@ -149,7 +155,7 @@ step <sha256> <marker> <introduced> <changed> <flags|-> <path>
 file <sha256> <path>
 ```
 
-`min-helper` is the eeploi-helper release needed to run it. The `step` lines are in run order, with the marker and flags from `markers`, the release the step came in and the first release since which it is the same. The `file` lines are the other files a run reads: `start.sh`, `values.sh`, the checks, `php-source.sh` and `fingerprint.sh`.
+`min-helper` is the eeploi-helper release needed to run it. The `step` lines are in run order, with the marker and flags from `markers`, the release the step came in and the first release since which it is the same. The `file` lines are the other files a run reads: `start.sh`, `values.sh`, the checks, the probes (in the order of `probes`), `php-source.sh` and `fingerprint.sh`.
 
 ## Fingerprint
 

@@ -74,8 +74,8 @@ jobs:
           bin/render.sh --checks > "$RUNNER_TEMP/checks.sh"
           shellcheck -e SC1091 "$RUNNER_TEMP/checks.sh"
 
-      - name: shellcheck, bin/ and the fingerprint
-        run: shellcheck bin/*.sh stack/fingerprint.sh
+      - name: shellcheck, bin/, the fingerprint and the probes
+        run: shellcheck bin/*.sh stack/fingerprint.sh stack/*.probe.sh ubuntu-*/*.probe.sh
 
       # The first boot's report to eeploi, against a fake eeploi with a short cap: taken, refused,
       # kept trying while eeploi is down or can't be reached, and never the token in the output.
@@ -83,7 +83,8 @@ jobs:
         run: bin/test-report.sh
 
       # A release from a tag made here only: every file in the package matches its manifest, the
-      # package holds nothing else, and the steps are those of the list, in its order.
+      # package holds nothing else, the steps are those of the list, in its order, and so are the
+      # probes, as file lines.
       - name: release, from a local tag
         run: |
           git tag v99.0.0
@@ -95,6 +96,7 @@ jobs:
           (cd "$RUNNER_TEMP/package" && sha256sum -c --quiet "$RUNNER_TEMP/sums")
           diff <(tar -tzf dist/99.0.0/recipes-99.0.0.tar.gz | grep -v '/$' | LC_ALL=C sort) <(awk '{ print $2 }' "$RUNNER_TEMP/sums" | LC_ALL=C sort)
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
+          diff <(awk '$1 == "file" && $NF ~ /\.probe\.sh$/ { print $NF }' "$manifest") <(grep -vE '^(#|$)' ubuntu-26.04/probes)
 
       # The release above, signed with a throwaway key: it verifies against that key, and fails
       # against the recipes key in minisign.pub, with a manifest signed by another key, a changed
@@ -191,7 +193,8 @@ jobs:
           for provider in a "$long"; do [ -f "dist/99.0.2/recipes-99.0.2-$provider-ubuntu-26.04.manifest" ]; done
 
       # In a copy of the tree: an always step with a value the helper does not fill fails the
-      # layout, and does not render to run on its own. A step that is a link fails the layout, as does
+      # layout, and does not render to run on its own. A probe not in PROBES.md fails the layout,
+      # as does a probe file in no list of probes. A step that is a link fails the layout, as does
       # a file in the list with a path the helper refuses, and a link to php-source.sh, which the
       # layout doesn't read, fails the release.
       - name: layout and release, refused
@@ -214,6 +217,16 @@ jobs:
           echo "$out"
           grep -qxF 'DECISIONS.md: D-3 where D-2 comes' <<< "$out"
           git checkout -q DECISIONS.md
+          sed -i '/stack\/04-ssh.probe.sh/d' PROBES.md
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a probe not in PROBES.md'; exit 1; fi
+          echo "$out"
+          grep -qxF 'stack/04-ssh.probe.sh: is not in the probe table in PROBES.md' <<< "$out"
+          git checkout -q PROBES.md
+          cp stack/04-ssh.probe.sh stack/04-extra.probe.sh
+          if out=$(bin/check-layout.sh); then echo "$out"; echo 'layout passed a probe in no list'; exit 1; fi
+          echo "$out"
+          grep -qxF 'stack/04-extra.probe.sh: is in no list of probes' <<< "$out"
+          rm stack/04-extra.probe.sh
           echo '# {ranges}' >> stack/09-logs.sh
           if bin/render.sh --step stack/09-logs.sh > /dev/null; then echo '--step rendered {ranges}'; exit 1; fi
           git checkout -q stack/09-logs.sh
@@ -495,6 +508,11 @@ jobs:
       # (bin/test-php-source.sh).
       - name: PHP source, apt-get update tried again
         run: docker run --rm -v "$PWD:/recipes:ro" -w /recipes twice bin/test-php-source.sh
+
+      # Each probe in a fresh Ubuntu 26.04, with none of the software: no lines and no error, but
+      # from apt and the kernel, which every Ubuntu has; /etc as it was (bin/test-probes.sh).
+      - name: probes, without the software
+        run: docker run --rm -v "$PWD:/recipes:ro" -w /recipes "$UBUNTU_IMAGE" bin/test-probes.sh --empty-except apt,kernel
 
       # The fingerprint prints only known facts, in the container and on the runner, a real VM,
       # and leaves /etc as it was.
@@ -796,6 +814,13 @@ jobs:
             ssh -i /root/ci-key -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/known_hosts \
               -p 10022 deploy@127.0.0.1 true
             ssh-keygen -F "[127.0.0.1]:10022" -f /root/known_hosts | grep -q ssh-ed25519'
+
+      # The probes on the whole server, with secrets planted where a probe reads and an IP banned:
+      # none of them shows, the lines expected do, and a probe that leaks, writes to /etc or to
+      # stderr fails the test (bin/test-probes-server.sh). The server is as it was after, for the
+      # reports below.
+      - name: server, the probes
+        run: docker exec server bin/test-probes-server.sh
 
       # D-8: ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
       - name: server, ssh-audit report

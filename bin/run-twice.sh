@@ -9,8 +9,8 @@ cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# A step or check runs as the helper runs it (recipe-run): from /, with its PATH and a clean environment.
-as_helper() { (cd / && exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LC_ALL=C TMPDIR=/tmp bash "$1") < /dev/null; }
+# shellcheck source=bin/helper-env.sh
+. bin/helper-env.sh
 
 failed() { systemctl list-units --state=failed --plain --no-legend | awk '{ print $1 }' | LC_ALL=C sort; }
 
