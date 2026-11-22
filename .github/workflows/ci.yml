@@ -556,33 +556,38 @@ jobs:
             [ "$(tail -n 1 <<< "$out")" = "result failed" ]
             chmod +x /usr/local/bin/composer'
 
-      # Root's password, as the lock-root check sees it. At the first boot (no cloud-init
-      # boot-finished yet) a password set fails the run. After it, the run passes with a note, as
-      # after a Reset root password. No password at all fails, before and after.
+      # Root's password, as the lock-root check sees it. With the marker step 0 writes once it locked
+      # root (/etc/eeploi/root-locked), a password set later passes with a note, as after a Reset
+      # root password; without it a password fails, as one the provider set and step 0 never
+      # locked. No password fails with and without it. Locked passes with and without it, no note.
       - name: server, recipe-run with a root password
         run: |
           docker exec server bash -euc '
             run() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper recipe-run 99.0.0 example 2>&1; }
+            passes() { out=$(run) || { echo "$out"; echo "recipe-run failed: $1"; exit 1; }
+              grep -qxF "check ok first-boot/00-lock-root.check.sh" <<< "$out" || { echo "$out"; exit 1; }; }
             fails() { if out=$(run); then echo "$out"; echo "recipe-run passed: $1"; exit 1; fi
               grep -qxF "check failed first-boot/00-lock-root.check.sh" <<< "$out" || { echo "$out"; exit 1; }
               grep -qxF "root'\''s password is not locked: $2" <<< "$out" || { echo "$out"; echo "not the reason: $2"; exit 1; }; }
             note="note: root has a password (set after the first boot); root can'\''t log in over SSH"
+            no_note() { if grep -qxF "$note" <<< "$out"; then echo "a note with root locked"; exit 1; fi; }
+            [ "$(stat -c "%F %U:%G %a" /etc/eeploi/root-locked)" = "regular file root:root 644" ]
             echo root:ci-root-password | chpasswd
-            fails "a root password at the first boot" P
-            [ ! -e /var/lib/cloud ]
-            install -d /var/lib/cloud/instance
-            touch /var/lib/cloud/instance/boot-finished
-            out=$(run) || { echo "$out"; echo "recipe-run failed with a root password after the first boot"; exit 1; }
-            echo "$out"
+            passes "a root password after step 0"
             grep -qxF "$note" <<< "$out"
-            grep -qxF "check ok first-boot/00-lock-root.check.sh" <<< "$out"
+            mv /etc/eeploi/root-locked /root/root-locked
+            fails "a root password step 0 never locked" P
             passwd -q -d root
-            fails "no root password after the first boot" NP
-            rm -r /var/lib/cloud
-            fails "no root password at the first boot" NP
+            fails "no root password without the marker" NP
+            mv /root/root-locked /etc/eeploi/root-locked
+            fails "no root password with the marker" NP
             passwd -q -l root
-            out=$(run) || { echo "$out"; exit 1; }
-            if grep -qxF "$note" <<< "$out"; then echo "a note with root locked"; exit 1; fi'
+            passes "root locked"
+            no_note
+            mv /etc/eeploi/root-locked /root/root-locked
+            passes "root locked, no marker"
+            no_note
+            mv /root/root-locked /etc/eeploi/root-locked'
 
       # Step 4 runs again and changes nothing (and leaves the package's moduli file as it is), and its
       # check passes. Then the check fails on each setting turned back in a drop-in that sorts

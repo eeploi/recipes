@@ -29,7 +29,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 
 | Step | File | Does |
 |---|---|---|
-| 0 | `first-boot/00-lock-root.sh` | Locks root's password |
+| 0 | `first-boot/00-lock-root.sh` | Locks root's password and records that it did (`/etc/eeploi/root-locked`) |
 | 0 | `stack/00-values.sh` | Writes the values to `/etc/eeploi/recipes.conf` (Values) |
 | 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times |
 | 0 | `first-boot/00-helper-download.sh` | Downloads eeploi-helper and checks its signature and SHA-256 |
@@ -67,7 +67,7 @@ The markers are not part of a server's script, so a new server gets the same scr
 
 Each step `NN-name.sh` has a `NN-name.check.sh` next to it: a read-only check that the step left the server as it should. A check reads the same values (`DEPLOY_USER`, `SSH_PORT`, `PHP`) and writes nothing. In `bin/render.sh --checks` each check runs in its own subshell under `set -e`, so any line that fails fails it, and prints `ok` or `failed` with its file. Checks are not part of the first boot yet.
 
-The lock-root check needs root's password locked until the first boot has finished (cloud-init's `/var/lib/cloud/instance/boot-finished`). After it, a password the owner set (Reset root password, Set a new root password) passes too, with the note "root has a password (set after the first boot); root can't log in over SSH". No password never passes.
+The lock-root check needs root's password locked. Once step 0 has locked it (`/etc/eeploi/root-locked`, root's), a password the owner set later (Reset root password, Set a new root password) passes too, with the note "root has a password (set after the first boot); root can't log in over SSH". No password never passes.
 
 ## CI
 
@@ -88,7 +88,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
 - **`server`**: a whole server, built as eeploi builds one, passes the helper's own `recipe-run`, with Ubuntu's own PHP and with a PHP from packages.sury.org.
   The helper is the release CI pins, with only its recipes key and its release address changed for a test key and a local server.
   `recipe-run` on a release built in CI ends `result ok` twice, the second time with every step the same, and fails when a check fails.
-  Root's password: a password set fails the run at the first boot and passes with a note after it (cloud-init's `boot-finished`); no password fails both.
+  Root's password: a password set passes with a note when step 0 locked root first (`/etc/eeploi/root-locked`) and fails without that; no password fails both; locked passes both, without a note.
   npm, as the deploy user runs it, prints no warning and no update notice.
   The settings SSH runs with, after every drop-in, are step 4's.
   nginx refuses the TLS handshake for an unknown host.
