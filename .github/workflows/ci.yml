@@ -295,7 +295,7 @@ jobs:
             cp /etc/apt/apt.conf.d/52eeploi-unattended /tmp/52eeploi-unattended
             sed -i "/^#clear/d" /etc/apt/apt.conf.d/52eeploi-unattended
             if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with the Ubuntu origins added up"; exit 1; fi
-            grep -qxF "unattended-upgrades: not security updates only" /tmp/out-07
+            grep -qxF "unattended-upgrades: not the origins eeploi sets" /tmp/out-07
             cp /tmp/52eeploi-unattended /etc/apt/apt.conf.d/52eeploi-unattended
             rm /etc/apt/apt.conf.d/52eeploi-conffiles
             if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed without confold"; exit 1; fi
@@ -606,6 +606,18 @@ jobs:
             echo "expose_php = On" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"; fails "expose_php on" "expose_php is not off"
             echo "session.upload_progress.enabled = 1" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"; fails "upload progress on" "upload_progress.enabled is not off"
             bash /root/php-check'
+
+      # With a PHP from packages.sury.org, the origin unattended-upgrades allows is the one apt
+      # knows that source by (its Release: origin and suite); with Ubuntu's PHP there is none.
+      - name: server, the PHP source in unattended-upgrades
+        run: |
+          docker exec server bash -euc '
+            if [ -f /etc/apt/sources.list.d/sury-php.sources ]; then
+              apt-cache policy | grep -F "o=deb.sury.org,a=$(. /etc/os-release && echo "$VERSION_CODENAME")," > /dev/null
+              apt-config dump | grep -xF "Unattended-Upgrade::Allowed-Origins:: \"deb.sury.org:\${distro_codename}\";" > /dev/null
+            else
+              [ ! -e /etc/apt/apt.conf.d/53eeploi-sury-php ]
+            fi'
 
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without

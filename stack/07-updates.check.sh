@@ -1,10 +1,14 @@
 # apt runs the security updates.
 apt-config dump | grep '^APT::Periodic::Unattended-Upgrade "1";' >/dev/null # not -q: under pipefail, grep stopping early fails apt-config
-# Security updates only: the one origin, Ubuntu's own list cleared, and no origin pattern.
+# Security updates only, Ubuntu's own list cleared, and sury.org's exactly when the PHP comes from
+# there; no origin pattern.
 apt_config=$(apt-config dump)
 # shellcheck disable=SC2016 # the ${} is apt's
-[ "$(grep '^Unattended-Upgrade::Allowed-Origins:: ' <<< "$apt_config")" = 'Unattended-Upgrade::Allowed-Origins:: "${distro_id}:${distro_codename}-security";' ] \
-  || { echo 'unattended-upgrades: not security updates only' >&2; exit 1; }
+origins='Unattended-Upgrade::Allowed-Origins:: "${distro_id}:${distro_codename}-security";'
+# shellcheck disable=SC2016 # the ${} is apt's
+[ ! -f /etc/apt/sources.list.d/sury-php.sources ] || origins+=$'\n''Unattended-Upgrade::Allowed-Origins:: "deb.sury.org:${distro_codename}";'
+[ "$(grep '^Unattended-Upgrade::Allowed-Origins:: ' <<< "$apt_config")" = "$origins" ] \
+  || { echo 'unattended-upgrades: not the origins eeploi sets' >&2; exit 1; }
 if grep '^Unattended-Upgrade::Origins-Pattern:: ' <<< "$apt_config" >/dev/null; then
   echo 'unattended-upgrades: an origin pattern is set' >&2; exit 1
 fi
