@@ -12,6 +12,7 @@ stack/03-sudo.sh
 stack/04-ssh.sh
 stack/05-firewall.sh
 stack/06-fail2ban.sh
+stack/06-fail2ban-trusted.sh
 stack/07-updates.sh
 stack/08-real-ip.sh
 stack/08-nginx.sh

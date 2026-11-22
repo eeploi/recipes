@@ -2,7 +2,8 @@
 # The probes on a whole server, as CI builds one, with secrets planted where a probe reads: in an
 # nginx server block (in a quoted ; and a comment too, and in a file after one whose } # and quote
 # inside a word would put a reading out of step with nginx's), a PHP-FPM pool and ini file, apt's config,
-# SSH's, MariaDB's and a UFW rule's comment; Redis with a password, and an IP banned. With a sury.org
+# SSH's, MariaDB's and a UFW rule's comment; Redis with a password, an IP banned, and eeploi's
+# addresses in fail2ban's ignore list. With a sury.org
 # PHP, PostgreSQL too, its password in a conf.d file: not with Ubuntu's PHP, whose server the
 # ssh-audit and Lynis reports read after this. bin/test-probes.sh must pass, with none of
 # them in the output and the lines expected. Then a probe with a line more that prints a secret,
@@ -64,7 +65,8 @@ fail2ban-client set sshd banip 203.0.113.7 > /dev/null
 
 composer=$(COMPOSER_ALLOW_SUPERUSER=1 composer --version --no-plugins --no-interaction 2> /dev/null | awk '{ print $3; exit }')
 npm=$(grep -o 'npm@[0-9.]*$' /root/by-hand.sh)
-args=(--secret PLANTED --secret 203.0.113.7)
+# eeploi's addresses (bin/render.sh), in the ignore list of every jail, never show either.
+args=(--secret PLANTED --secret 203.0.113.7 --secret 203.0.113.10 --secret 2001:db8::10)
 # shellcheck disable=SC2016 # the ${} is apt's
 for expect in 'ssh:^port 10022$' 'ssh:^permitrootlogin no$' 'ssh:^passwordauthentication no$' 'ssh:^allowusers deploy$' \
   'ufw:^status active$' 'ufw:^rule 10022/tcp ALLOW IN Anywhere$' 'ufw:^rule 8082/tcp ALLOW IN Anywhere$' \
