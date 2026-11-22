@@ -92,6 +92,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   A release builds from a tag, matches its manifest, and refuses what the helper would refuse.
   `--verify` takes only a release that is unchanged and signed, prehashed, with the right key.
   The key in `minisign.pub` is `RECIPES_PUBKEY` in the helper release CI pins (`HELPER_TAG`), and the provider name rule in `bin/` is the one `recipe-run` checks there.
+  The values `bin/release.sh` reads from the commit (`bin/release-values.sh`) read from this tree: one `HELPER_TAG` line and the providers.
   In a fresh Ubuntu 26.04 container, each `always` step runs twice as the helper runs it, leaves `/etc` the same on the second run, fails no unit, and passes its check.
   Each check is read-only, and where `ci.yml` tests it, fails without what its step writes.
   The fingerprint prints only known facts.
@@ -131,7 +132,7 @@ Its check: `/etc/eeploi` is root's and 0755; the user (not root) and the port (2
 
 ## Releases
 
-`bin/release.sh`, with no values, is the one release command. Run it in your own terminal: minisign asks for the key password. It releases `main`'s head: there is no tag before, publishing makes it (D-21). It reads its values from that commit, never from arguments (D-26):
+`bin/release.sh`, with no values, is the one release command. Run it in your own terminal: minisign asks for the key password. It releases `main`'s head: there is no tag before, publishing makes it (D-21). It reads its values from that commit, never from arguments (D-26, `bin/release-values.sh`):
 
 - **Version:** the top version heading in [CHANGELOG.md](CHANGELOG.md), `## VERSION` right after `## Unreleased`. `## Unreleased` must be there, first, and empty: a line under it is a change not yet in a version.
 - **Helper:** `HELPER_TAG` in `.github/workflows/ci.yml` (`v1.2.0` is `1.2.0`), the helper release CI tested. The one line must read `  HELPER_TAG: vN.N.N`, nothing else.

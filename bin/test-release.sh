@@ -9,7 +9,8 @@
 # then an error), swap (a file changed while it was a draft, seen once published). GH_IMMUTABLE=false:
 # the published release is not immutable. GH_CI: what CI on the commit gives.
 # bin/release.sh takes no values: the copy's CHANGELOG.md says 9.9.9, its providers file example, and
-# its ci.yml's HELPER_TAG is the one in this tree. Each refused value is a commit of its own, pushed.
+# its ci.yml's HELPER_TAG v1.2.3. Each refused value is a commit of its own, not pushed: the values
+# are read before main is compared with GitHub's.
 # Also bin/build-release.sh with RECIPES_COMMIT: the same bytes as from a tag on that commit.
 # Needs git, minisign, script and timeout. Runs without GitHub: CI runs it, and so can you.
 set -euo pipefail
@@ -32,7 +33,8 @@ cat > "$t/stubs/gh" << 'EOF'
 s=$GH_STATE
 echo "$*" >> "$s/log"
 case "$1 $2" in
-  "api repos/eeploi/helper/releases/tags/"*) exit 0 ;;
+  "api repos/eeploi/helper/releases/tags/"*)
+    [ "$2" = "repos/eeploi/helper/releases/tags/v${GH_HELPER:-1.2.3}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
   "api repos/eeploi/recipes/releases?per_page=100")
     [ -f "$s/release" ] || exit 0
     read -r draft _ < "$s/release"
@@ -102,8 +104,9 @@ git -C "$root" ls-files -z | (cd "$root" && tar --null -T - -cf -) | tar -xf - -
 cp "$t/key.pub" "$repo/minisign.pub"
 printf '# Changelog\n\n## Unreleased\n\n## 9.9.9\n\n- A test.\n\n## 9.9.8\n' > "$repo/CHANGELOG.md"
 printf '# A comment\n\nexample\n' > "$repo/providers"
-helper=$(sed -n 's/^  HELPER_TAG: v\([0-9.]*\)$/\1/p' "$root/.github/workflows/ci.yml")
-[ -n "$helper" ] || { echo "test-release: no HELPER_TAG in ci.yml" >&2; exit 1; }
+helper=1.2.3
+sed -i.bak "s/^  HELPER_TAG: .*/  HELPER_TAG: v$helper/" "$repo/.github/workflows/ci.yml"
+rm "$repo/.github/workflows/ci.yml.bak"
 tgit init -q --bare "$t/origin.git"
 tgit -C "$repo" init -q -b main
 tgit -C "$repo" add -A
@@ -224,16 +227,14 @@ for extra in 9.9.9 "--check 9.9.9" "9.9.9 $helper example" --verify; do
   out=$(cd "$repo" && env "${env_[@]}" bash bin/release.sh $extra 2>&1) || code=$?
   expect 2 "an argument is refused: $extra" "Usage: bin/release.sh [--check]"
 done
-# refused <name> <expected output> <shell code>: main's head with the code run on it, committed and
-# pushed, stops the checks; then main is back at $head, here and on the origin.
+# refused <name> <expected output> <shell code>: main's head with the code run on it, committed,
+# stops the checks; then main is back at $head.
 refused() {
   (cd "$repo" && eval "$3")
   tgit -C "$repo" add -A
   tgit -C "$repo" commit -qm "$1"
-  tgit -C "$repo" push -q origin main
   checks 1 "$1" "release: $2"
   tgit -C "$repo" reset -q --hard "$head"
-  tgit -C "$repo" push -q -f origin main
 }
 ci=.github/workflows/ci.yml
 refused "no CHANGELOG.md" "no CHANGELOG.md at" 'rm CHANGELOG.md'
@@ -251,8 +252,20 @@ refused "HELPER_TAG no version" ".github/workflows/ci.yml: HELPER_TAG is not vN.
 refused "HELPER_TAG with more after it" ".github/workflows/ci.yml: HELPER_TAG is not vN.N.N" \
   "sed -i.bak 's/^  HELPER_TAG: .*/& # v9.0.0/' $ci && rm $ci.bak"
 refused "no HELPER_TAG" ".github/workflows/ci.yml: not one HELPER_TAG line" "sed -i.bak '/^  HELPER_TAG: /d' $ci && rm $ci.bak"
+# A helper version GitHub doesn't have: pushed, so the checks get to it.
+sed -i.bak 's/^  HELPER_TAG: .*/  HELPER_TAG: v1.2.4/' "$repo/$ci" && rm "$repo/$ci.bak"
+tgit -C "$repo" commit -qam "helper 1.2.4"
+tgit -C "$repo" push -q origin main
+checks 1 "a helper version not released stops the checks" "release: no eeploi-helper release v1.2.4"
+expect 1 "the header shows the helper not released" "  helper   needs 1.2.4 (NOT released)"
+tgit -C "$repo" reset -q --hard "$head"
+tgit -C "$repo" push -q -f origin main
+refused "HELPER_TAG with a leading zero" ".github/workflows/ci.yml: HELPER_TAG is not vN.N.N" \
+  "sed -i.bak 's/^  HELPER_TAG: .*/  HELPER_TAG: v1.02.3/' $ci && rm $ci.bak"
+refused "a version with a leading zero" "CHANGELOG.md: the heading after ## Unreleased is not ## VERSION" \
+  "printf '# Changelog\\n\\n## Unreleased\\n\\n## 9.09.9\\n' > CHANGELOG.md"
 refused "HELPER_TAG twice" ".github/workflows/ci.yml: not one HELPER_TAG line" "echo '  HELPER_TAG: v9.0.0' >> $ci"
-refused "no providers file" "no providers file at" 'rm providers'
+refused "no providers file" "no providers at" 'rm providers'
 refused "no provider" "providers: no provider" "echo '# none' > providers"
 refused "a provider the helper refuses" "providers: Example is no provider name" "echo Example >> providers"
 refused "a provider twice" "providers: example is there twice" "echo example >> providers"

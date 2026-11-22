@@ -8,9 +8,8 @@
 # --check runs step 1 only: no key, no build, nothing published.
 # The secret key is ~/.minisign/eeploi-recipes.key, or RECIPES_KEY when set; its public key must
 # be next to it (.pub) and the same as minisign.pub.
-# It takes no values: the version, the helper and the providers come from main's head. The version is the top version heading in
-# CHANGELOG.md, under an empty "## Unreleased". The helper it needs is HELPER_TAG in
-# .github/workflows/ci.yml, the one CI tested. The providers are the lines of providers.
+# It takes no values: the version, the helper and the providers come from main's head
+# (bin/release-values.sh, D-26).
 # Usage: bin/release.sh [--check]
 set -euo pipefail
 export LC_ALL=C
@@ -23,7 +22,8 @@ key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
 check_only=
 [ "${1:-}" != --check ] || { check_only=1; shift; }
 [ "$#" -eq 0 ] || { echo "Usage: bin/release.sh [--check]: the version, helper and providers come from main's head" >&2; exit 2; }
-provider_name='^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$' # the helper's rule, as bin/build-release.sh
+# shellcheck source=bin/release-values.sh
+. bin/release-values.sh
 
 step=0
 drafted=
@@ -128,54 +128,21 @@ for cmd in git gh minisign base64 od paste; do
   command -v "$cmd" >/dev/null || fail "$cmd is not installed"
 done
 
-# changelog_version <file>: the version of its top version heading. The first heading is
-# "## Unreleased", with nothing under it but empty lines; the next is "## VERSION", that version.
-changelog_version() {
-  awk '
-    function stop(why) { print why; code = 1; exit }
-    /^## / {
-      n++
-      if (n == 1) { if ($0 != "## Unreleased") stop("the first heading is not ## Unreleased"); next }
-      v = substr($0, 4)
-      if (v !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) stop("the heading after ## Unreleased is not ## VERSION, such as ## 0.6.0")
-      print v; found = 1; exit
-    }
-    n == 1 && NF { stop("## Unreleased is not empty: move its lines under a version") }
-    END {
-      if (code) exit code
-      if (!n) { print "no ## Unreleased heading"; exit 1 }
-      if (!found) { print "no ## VERSION heading after ## Unreleased"; exit 1 }
-    }
-  ' "$1"
-}
-# helper_tag <file>: the version of the one HELPER_TAG line in CI's workflow, v and all.
-helper_tag() {
-  local lines
-  lines=$(grep -E '^ *HELPER_TAG:' "$1" || true)
-  [ "$(grep -c . <<< "$lines")" = 1 ] || { echo "not one HELPER_TAG line"; return 1; }
-  [[ $lines =~ ^\ +HELPER_TAG:\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || { echo "HELPER_TAG is not vN.N.N: $lines"; return 1; }
-  echo "${BASH_REMATCH[1]}"
-}
-
 # What the header shows, read first: nothing changes but the fetch of main.
 git fetch -q origin main
 branch=$(git branch --show-current)
 head=$(git rev-parse HEAD)
 short=$(git rev-parse --short "$head")
 # D-26: the version, the helper and the providers, from the commit released, never from arguments.
-git show "$head:CHANGELOG.md" > "$work/changelog" 2>/dev/null || fail "no CHANGELOG.md at $short"
+from_head() { git show "$head:$1" > "$work/$2" 2>/dev/null || fail "no $1 at $short"; }
+from_head CHANGELOG.md changelog
 version=$(changelog_version "$work/changelog") || fail "CHANGELOG.md: $version"
-git show "$head:.github/workflows/ci.yml" > "$work/ci.yml" 2>/dev/null || fail "no .github/workflows/ci.yml at $short"
+from_head .github/workflows/ci.yml ci.yml
 min_helper=$(helper_tag "$work/ci.yml") || fail ".github/workflows/ci.yml: $min_helper"
-git show "$head:providers" > "$work/providers" 2>/dev/null || fail "no providers file at $short"
+from_head providers providers
+list=$(providers_list "$work/providers") || fail "providers: $list"
 providers=()
-while IFS= read -r provider || [ -n "$provider" ]; do
-  case $provider in ''|'#'*) continue ;; esac
-  [[ "$provider" =~ $provider_name ]] || fail "providers: $provider is no provider name: a-z, 0-9 and inner -, at most 32"
-  for p in ${providers[@]+"${providers[@]}"}; do [ "$p" != "$provider" ] || fail "providers: $provider is there twice"; done
-  providers+=("$provider")
-done < "$work/providers"
-[ "${#providers[@]}" -gt 0 ] || fail "providers: no provider"
+while IFS= read -r provider; do providers+=("$provider"); done <<< "$list"
 tag=v$version
 title="eeploi-recipes $version"
 out=dist/$version

@@ -4,7 +4,7 @@
 # twice: each exits 0; the JSON parses, eeploi set the server up, every kept check ran and passed,
 # every kept probe ran, ok or not-installed, with no line refused; a secret is in no output; /etc,
 # fail2ban and nginx are as they were. The text report is left in /root/server-report.txt.
-# For CI only, as root, in the server container. Needs jq.
+# For CI only, as root, in the server container. Reads the JSON with python3, which the image has.
 # Usage: bin/test-server-report.sh [--secret TEXT]...
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -27,35 +27,50 @@ fail=0
 bad() { echo "server-report: $*"; fail=1; }
 report() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper server-report "$@"; }
 
-command -v jq > /dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -yq jq > /dev/null
 state > "$tmp/before"
 for run in 1 2; do
   for form in text json; do
     out=$tmp/$form.$run
+    flag=()
+    [ "$form" = text ] || flag=(--json)
     rc=0
-    if [ "$form" = json ]; then report --json > "$out" 2> "$out.err" || rc=$?; else report > "$out" 2> "$out.err" || rc=$?; fi
+    report ${flag[@]+"${flag[@]}"} > "$out" 2> "$out.err" || rc=$?
     [ "$rc" -eq 0 ] || { bad "$form, run $run: exit $rc"; cat "$out.err"; }
   done
 done
 state > "$tmp/after"
 diff "$tmp/before" "$tmp/after" || bad "the reports changed /etc, fail2ban or nginx (above)"
 
+# What is wrong in a JSON report, a line each; nothing when all is right. JSON that doesn't parse,
+# or isn't an object, fails.
+wrong='
+import json, sys
+try:
+    r = json.load(open(sys.argv[1]))
+except ValueError as e:
+    sys.exit("does not parse: %s" % e)
+if not isinstance(r, dict):
+    sys.exit("not a JSON object")
+def part(name):
+    p = r.get(name)
+    return p if isinstance(p, dict) else {}
+checks, probes = part("checks"), part("probes")
+results = lambda p: p.get("results") if isinstance(p.get("results"), list) else []
+if r.get("setup") != "eeploi": print("setup %s" % r.get("setup"))
+if checks.get("state") != "ran": print("checks %s: %s" % (checks.get("state"), checks.get("reason")))
+if not results(checks): print("no checks")
+for c in results(checks):
+    if c.get("state") != "ok": print("check %s %s: %s" % (c.get("state"), c.get("path"), "; ".join(c.get("notes") or [])))
+if probes.get("state") != "ran": print("probes %s: %s" % (probes.get("state"), probes.get("reason")))
+if not results(probes): print("no probes")
+for p in results(probes):
+    if p.get("state") not in ("ok", "not-installed"): print("probe %s %s" % (p.get("name"), p.get("state")))
+    if p.get("rejected") != 0: print("probe %s: %s lines refused" % (p.get("name"), p.get("rejected")))
+'
 for run in 1 2; do
-  j=$tmp/json.$run
-  jq -e . "$j" > /dev/null || { bad "json, run $run: does not parse"; continue; }
-  # Each a list of what is wrong, empty when all is right.
-  for test in \
-    'if .setup == "eeploi" then empty else "setup \(.setup)" end' \
-    'if .checks.state == "ran" then empty else "checks \(.checks.state): \(.checks.reason)" end' \
-    'if (.checks.results | length) > 0 then empty else "no checks" end' \
-    '.checks.results[] | select(.state != "ok") | "check \(.state) \(.path): \(.notes | join("; "))"' \
-    'if .probes.state == "ran" then empty else "probes \(.probes.state): \(.probes.reason)" end' \
-    'if (.probes.results | length) > 0 then empty else "no probes" end' \
-    '.probes.results[] | select(.state != "ok" and .state != "not-installed") | "probe \(.name) \(.state)"' \
-    '.probes.results[] | select(.rejected != 0) | "probe \(.name): \(.rejected) lines refused"'; do
-    wrong=$(jq -r "$test" "$j")
-    [ -z "$wrong" ] || bad "json, run $run: $wrong"
-  done
+  if ! out=$(python3 -I -c "$wrong" "$tmp/json.$run" 2>&1); then bad "json, run $run: $out"
+  elif [ -n "$out" ]; then while IFS= read -r line; do bad "json, run $run: $line"; done <<< "$out"
+  fi
 done
 
 for file in "$tmp"/text.[12] "$tmp"/json.[12]; do
@@ -64,7 +79,7 @@ for file in "$tmp"/text.[12] "$tmp"/json.[12]; do
   done
 done
 
+# CI puts it in the job summary.
 cp "$tmp/text.2" /root/server-report.txt
-cat "$tmp/text.2"
 [ "$fail" -eq 0 ] || exit 1
 echo 'server-report ok'

@@ -8,8 +8,6 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 ## 0.6.0
 
-Needs eeploi-helper 1.2.0.
-
 ### Breaking
 
 What a renderer of the first boot must change:

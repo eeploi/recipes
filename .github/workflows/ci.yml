@@ -161,7 +161,7 @@ jobs:
         run: bin/test-release.sh
 
       # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper
-      # release HELPER_TAG. The provider name rule in bin/build-release.sh and bin/release.sh is
+      # release HELPER_TAG. The provider name rule in bin/build-release.sh and bin/release-values.sh is
       # the one recipe-run checks there, so a release never holds a provider the helper refuses;
       # a helper with another rule must fail it.
       - name: release, the recipes key and provider rule are the helper's
@@ -175,7 +175,7 @@ jobs:
             # shellcheck disable=SC2016 # the $ is in a regex
             rule=$(sed -n 's/^ *\[\[ \$2 =~ \(.*\) \]\] || fail "invalid provider: \$2"$/\1/p' <<< "$1")
             [ "$(grep -c . <<< "$rule")" = 1 ] || { echo "not one provider rule in the helper: $rule"; return 1; }
-            for file in bin/build-release.sh bin/release.sh; do
+            for file in bin/build-release.sh bin/release-values.sh; do
               ours=$(sed -n "s/^provider_name='\([^']*\)'.*/\1/p" "$file")
               [ "$ours" = "$rule" ] || { echo "$file: provider rule $ours, the helper's is $rule"; return 1; }
             done
@@ -183,6 +183,16 @@ jobs:
           same_rule "$helper"
           # shellcheck disable=SC2001 # sed: bash's own replace is slow on a file this size
           if same_rule "$(sed 's/{0,30}/{0,31}/' <<< "$helper")"; then echo 'another rule in the helper passed'; exit 1; fi
+
+      # D-26: what bin/release.sh reads from main's head, read here from this tree: one HELPER_TAG
+      # line, vN.N.N, the providers, and CHANGELOG.md's headings, with lines allowed under
+      # ## Unreleased, as a pull request may have them.
+      - name: release, the values bin/release.sh reads
+        run: |
+          . bin/release-values.sh
+          helper_tag .github/workflows/ci.yml
+          providers_list providers
+          changelog_version CHANGELOG.md open
 
       # A provider the helper would refuse is refused before anything else, with only its
       # message; the shortest and the longest names the helper takes, with a dash inside, build.

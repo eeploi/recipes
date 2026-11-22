@@ -6,9 +6,9 @@
 # addresses in fail2ban's ignore list. With a sury.org PHP, PostgreSQL too, its password in a
 # conf.d file: not with Ubuntu's PHP, whose server the
 # ssh-audit and Lynis reports read after this. bin/test-probes.sh must pass, with none of
-# them in the output and the lines expected, and so must the helper's server-report
-# (bin/test-server-report.sh). Then a probe with a line more that prints a secret,
-# writes to /etc, or writes to stderr must fail it. The server is as it was after, also on a failure.
+# them in the output and the lines expected. Then a probe with a line more that prints a secret,
+# writes to /etc, or writes to stderr must fail it. Last, with the secrets still planted, the
+# helper's server-report must pass (bin/test-server-report.sh). The server is as it was after, also on a failure.
 # For CI only, as root, in the server container.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -88,8 +88,6 @@ for expect in 'ssh:^port 10022$' 'ssh:^permitrootlogin no$' 'ssh:^passwordauthen
 done
 [ "$php" = 8.5 ] || args+=(--expect 'postgresql:^cluster [0-9]+/main port 5432$' --expect 'postgresql:^cluster [0-9]+/main listen_addresses localhost$')
 bin/test-probes.sh "${args[@]}"
-# The helper's report, with the same secrets planted: the probes and checks recipe-run kept.
-bin/test-server-report.sh "${secrets[@]}"
 
 copy=$(mktemp -d)
 cp -a . "$copy/recipes"
@@ -100,3 +98,6 @@ for line in 'echo leak PLANTED-x' 'touch /etc/written' 'echo oops >&2'; do
   rm -f /etc/written
 done
 echo 'probes on the server ok'
+
+# The helper's report, with the same secrets still planted: the checks and probes recipe-run kept.
+bin/test-server-report.sh "${secrets[@]}"

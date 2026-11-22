@@ -227,5 +227,5 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Decided:** 2026-11-22
 - **What:** `bin/release.sh` takes no version, helper or providers. The version is the top `## VERSION` heading in `CHANGELOG.md`, under an empty `## Unreleased`; the helper it needs (`min-helper`) is `HELPER_TAG` in CI's workflow; the providers are the lines of `providers`. All three are read from the commit it releases, with strict patterns, and a value it can't read stops it. Any argument but `--check` is refused.
 - **Why:** three values typed by hand are easy to get wrong, and a wrong one can't be undone (D-21). A release claims only the helper CI tested it with, and its changes are written down before it goes out.
-- **Accepted:** a new version or provider needs a commit, reviewed in a pull request, before it can be released.
-- **Where:** `bin/release.sh`
+- **Accepted:** a new version or provider needs a commit, reviewed in a pull request, before it can be released. The helper CI tests with is the helper every server needs: raising `HELPER_TAG` raises `min-helper` in the next release, also when no recipe needs the newer helper.
+- **Where:** `bin/release.sh`, `bin/release-values.sh`
