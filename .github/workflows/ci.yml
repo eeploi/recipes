@@ -267,8 +267,9 @@ jobs:
       # only the values the helper fills and as the helper runs it: from /, with its PATH and a
       # clean environment. A step whose second run changes /etc fails. The host's kernel modules are mounted
       # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
-      # the services still run after all of them. Then 07's check must fail without its apt
-      # lines: every line of a check counts, not only the last.
+      # the services still run after all of them. Then 07's check must fail with one interface
+      # that sends redirects, and without its apt lines: every line of a check counts, not only the
+      # last.
       - name: always steps, twice, then their checks
         run: |
           docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
@@ -285,6 +286,10 @@ jobs:
             systemctl is-active fail2ban nginx
             bin/run-twice.sh
             systemctl is-active fail2ban nginx
+            echo 1 > /proc/sys/net/ipv4/conf/lo/send_redirects
+            ! bash <(bin/render.sh --check stack/07-updates.sh)
+            echo 0 > /proc/sys/net/ipv4/conf/lo/send_redirects
+            bash <(bin/render.sh --check stack/07-updates.sh)
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash <(bin/render.sh --check stack/07-updates.sh)'
 
