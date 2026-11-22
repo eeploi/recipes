@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR stops that PR's older run. On main every run finishes, each in a group of its
+# own: one group for main would let a third push cancel the second's pending run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The one Ubuntu 26.04 image both jobs' containers start from, and the one helper release CI reads,
 # with the helper's release key (key id A2C97024AB6219A8), pinned here, not read next to the release.
 env:
@@ -759,7 +765,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: server, keep the Lynis report
-        if: always() && matrix.php == '8.5'
+        if: ${{ !cancelled() && matrix.php == '8.5' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lynis
