@@ -1,0 +1,45 @@
+name: Bug report
+description: A step in eeploi recipes doesn't do what it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: A security problem never goes here. Report it privately, as .github/SECURITY.md says. Leave out server names, IP addresses and secrets; use fictional ones, such as `shop.example`.
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you saw, in plain words. Copy the error as it was shown, such as the step a failure reports.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run step 4 (`stack/04-ssh.sh`) on …
+        2. See …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Recipes release or commit
+      description: The release tag, or the commit the server was built with.
+      placeholder: v0.4.2
+    validations:
+      required: true
+  - type: input
+    id: ubuntu
+    attributes:
+      label: Ubuntu version
+      description: The output of `lsb_release -ds`.
+      placeholder: Ubuntu 26.04 LTS
+    validations:
+      required: true
