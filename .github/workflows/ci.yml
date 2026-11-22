@@ -765,7 +765,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: server, keep the Lynis report
-        if: always() && matrix.php == '8.5'
+        if: ${{ !cancelled() && matrix.php == '8.5' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lynis
