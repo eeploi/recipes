@@ -59,7 +59,7 @@ SYSCTL
 /usr/lib/systemd/systemd-sysctl /etc/sysctl.d/60-eeploi-network.conf
 # Ctrl+Alt+Del in a provider's web console doesn't restart the server: one keystroke there could
 # cut off a first boot halfway. Masking the target stops one press; CtrlAltDelBurstAction=none stops
-# seven within two seconds, which otherwise force a reboot. A planned restart (systemctl reboot, the
+# more than seven within two seconds, which otherwise force a reboot. A planned restart (systemctl reboot, the
 # provider's reboot) still works. systemd reads the drop-in when it starts, so it starts again here,
 # only when the running value isn't none yet.
 systemctl mask --quiet ctrl-alt-del.target

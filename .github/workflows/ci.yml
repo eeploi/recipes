@@ -276,8 +276,8 @@ jobs:
       # the services still run after all of them. Then 07's check must fail with one interface
       # that sends redirects, with Ubuntu's origins added to ours (no #clear; with it, an origin
       # pattern in an earlier file is cleared), without the conffile options, with ctrl-alt-del.target
-      # unmasked, with CtrlAltDelBurstAction back at reboot-force (in the file, then running too),
-      # and without its apt lines: every line of a check counts, not only the last.
+      # unmasked (step 7 masks it again), with CtrlAltDelBurstAction back at reboot-force (in the
+      # file, then running too), and without its apt lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
           docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
@@ -295,7 +295,10 @@ jobs:
             bin/run-twice.sh
             systemctl is-active fail2ban nginx
             bin/render.sh --check stack/07-updates.sh > /tmp/check-07
-            fails_07() { if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with $1"; exit 1; fi; grep -qxF "$2" /tmp/out-07; }
+            fails_07() {
+              if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with $1"; exit 1; fi
+              grep -qxF "$2" /tmp/out-07 || { echo "07 check with $1, not: $2"; cat /tmp/out-07; exit 1; }
+            }
             echo 1 > /proc/sys/net/ipv4/conf/lo/send_redirects
             fails_07 "lo sending redirects" "/proc/sys/net/ipv4/conf/lo/send_redirects is not 0"
             echo 0 > /proc/sys/net/ipv4/conf/lo/send_redirects
@@ -313,7 +316,8 @@ jobs:
             bash /tmp/check-07
             systemctl unmask --quiet ctrl-alt-del.target
             fails_07 "ctrl-alt-del.target unmasked" "ctrl-alt-del.target is not masked"
-            systemctl mask --quiet ctrl-alt-del.target
+            bash <(bin/render.sh --step stack/07-updates.sh)
+            bash /tmp/check-07
             cad=/etc/systemd/system.conf.d/60-eeploi-ctrl-alt-del.conf
             sed -i "s/=none$/=reboot-force/" "$cad"
             fails_07 "reboot-force in the file" "60-eeploi-ctrl-alt-del.conf: not CtrlAltDelBurstAction=none"

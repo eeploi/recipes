@@ -43,8 +43,8 @@ done
 for key in /proc/sys/net/ipv4/conf/all/log_martians /proc/sys/net/ipv4/conf/default/log_martians; do
   [ "$(cat "$key")" = 1 ] || { echo "$key is not 1" >&2; exit 1; }
 done
-# Ctrl+Alt+Del restarts nothing: the target is masked, and seven presses do nothing, now and after
-# a boot.
+# Ctrl+Alt+Del restarts nothing: the target is masked, and a burst of presses does nothing now; the
+# drop-in has the line for the next boot.
 [ "$(systemctl is-enabled ctrl-alt-del.target 2>/dev/null)" = masked ] \
   || { echo 'ctrl-alt-del.target is not masked' >&2; exit 1; }
 [ "$(systemctl show -p CtrlAltDelBurstAction --value)" = none ] \
