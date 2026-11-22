@@ -97,6 +97,16 @@ release_view() {
   gh release view "$tag" -R "$REPO" --json "isDraft,$1,assets,name" \
     --jq "\"\\(.isDraft) \\(.$1) \\([.assets[].name] | sort | join(\",\")) \\(.name)\""
 }
+# newer <a> <b>: version a is higher than b, each part compared as a number.
+newer() {
+  local IFS=. a b i
+  read -r -a a <<< "$1"
+  read -r -a b <<< "$2"
+  for i in 0 1 2; do
+    [ "$((10#${a[i]}))" -eq "$((10#${b[i]}))" ] || { [ "$((10#${a[i]}))" -gt "$((10#${b[i]}))" ]; return; }
+  done
+  return 1
+}
 # tag_list local|remote: each v* tag and its commit, sorted. The build reads every v* tag for
 # the versions in the manifest, so they must be GitHub's.
 tag_list() {
@@ -176,6 +186,14 @@ ok "every v* tag the same as GitHub's"
 # makes the tag: until then there is none.
 [ -z "$tagged$remote_tagged" ] || fail "$tag already exists: releases are immutable, release a new version"
 ok "$tag is new, here and on GitHub"
+# Releases only go up: no fix for an older line, which servers refuse anyway. The tags here are
+# GitHub's (above).
+highest=$(sed -n 's/^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\) .*/\1/p' "$work/tags.local" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+if [ -n "$highest" ]; then
+  ! newer "$highest" "$version" || fail "$version is lower than $highest: releases only go up"
+  newer "$version" "$highest" || fail "$version is not higher than $highest: releases only go up"
+  ok "$version is higher than $highest, the highest v* tag"
+fi
 # A draft has no tag and can still go: what a run that stopped before publishing leaves.
 [ "$release" != draft ] || fail "$REPO has a draft release $tag, left by a run that stopped: $undo"
 [ "$release" != published ] || fail "$REPO already has a release $tag: releases are immutable, release a new version"

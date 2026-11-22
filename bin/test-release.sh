@@ -193,6 +193,19 @@ reset
 tgit --git-dir="$t/origin.git" update-ref refs/tags/v9.9.9 "$head"
 checks 1 "the tag on GitHub only stops the checks" "the v* tags here are not GitHub's"
 reset
+# Higher than every v* tag, compared as numbers: 9.10.0 is higher than 9.9.9, and 9.09.9 the same.
+# The same tag is refused above.
+for v in 9.10.0 9.09.9 9.9.8; do
+  tgit --git-dir="$t/origin.git" update-ref "refs/tags/v$v" "$head"
+  tgit -C "$repo" update-ref "refs/tags/v$v" "$head"
+  case $v in
+    9.10.0) checks 1 "a version lower than the highest tag stops the checks" "release: 9.9.9 is lower than 9.10.0: releases only go up" ;;
+    9.09.9) checks 1 "a version equal to the highest tag stops the checks" "release: 9.9.9 is not higher than 9.09.9: releases only go up" ;;
+    *) checks 0 "a version higher than the highest tag passes the checks" "9.9.9 is higher than 9.9.8, the highest v* tag" ;;
+  esac
+  tgit --git-dir="$t/origin.git" update-ref -d "refs/tags/v$v"
+  tgit -C "$repo" update-ref -d "refs/tags/v$v"
+done
 GH_CI="completed failure" checks 1 "CI not green on main stops the checks" "release: CI on main at $short is not green (completed failure)"
 
 echo "== bin/release.sh"
