@@ -8,6 +8,9 @@
 # publish (the draft stays), noview (publish, and GitHub can't be asked after), late (published,
 # then an error), swap (a file changed while it was a draft, seen once published). GH_IMMUTABLE=false:
 # the published release is not immutable. GH_CI: what CI on the commit gives.
+# bin/release.sh takes no values: the copy's CHANGELOG.md says 9.9.9, its providers file example, and
+# its ci.yml's HELPER_TAG v1.2.3. Each refused value is a commit of its own, not pushed: the values
+# are read before main is compared with GitHub's.
 # Also bin/build-release.sh with RECIPES_COMMIT: the same bytes as from a tag on that commit.
 # Needs git, minisign, script and timeout. Runs without GitHub: CI runs it, and so can you.
 set -euo pipefail
@@ -30,7 +33,8 @@ cat > "$t/stubs/gh" << 'EOF'
 s=$GH_STATE
 echo "$*" >> "$s/log"
 case "$1 $2" in
-  "api repos/eeploi/helper/releases/tags/"*) exit 0 ;;
+  "api repos/eeploi/helper/releases/tags/"*)
+    [ "$2" = "repos/eeploi/helper/releases/tags/v${GH_HELPER:-1.2.3}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
   "api repos/eeploi/recipes/releases?per_page=100")
     [ -f "$s/release" ] || exit 0
     read -r draft _ < "$s/release"
@@ -95,9 +99,14 @@ env_=(-u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u RECIPES_COMMIT -u RECIPES
   PATH="$t/stubs:$PATH" RECIPES_KEY="$t/key.key")
 tgit() { env "${env_[@]}" git -c user.name=Test -c user.email=test@example.com "$@"; }
 
-# The tracked files as they are now, with the test key as minisign.pub.
+# The tracked files as they are now, with the test key as minisign.pub, version 9.9.9 and provider example.
 git -C "$root" ls-files -z | (cd "$root" && tar --null -T - -cf -) | tar -xf - -C "$repo"
 cp "$t/key.pub" "$repo/minisign.pub"
+printf '# Changelog\n\n## Unreleased\n\n## 9.9.9\n\n- A test.\n\n## 9.9.8\n' > "$repo/CHANGELOG.md"
+printf '# A comment\n\nexample\n' > "$repo/providers"
+helper=1.2.3
+sed -i.bak "s/^  HELPER_TAG: .*/  HELPER_TAG: v$helper/" "$repo/.github/workflows/ci.yml"
+rm "$repo/.github/workflows/ci.yml.bak"
 tgit init -q --bare "$t/origin.git"
 tgit -C "$repo" init -q -b main
 tgit -C "$repo" add -A
@@ -107,7 +116,7 @@ tgit -C "$repo" push -q origin main
 head=$(tgit -C "$repo" rev-parse HEAD)
 short=$(tgit -C "$repo" rev-parse --short HEAD)
 undo="check it with gh release view v9.9.9 -R eeploi/recipes, delete it with gh release delete v9.9.9 -R eeploi/recipes, then run this again"
-args=(9.9.9 1.1.0 example)
+args=(9.9.9 "$helper" example) # what bin/release.sh reads from the copy, for bin/build-release.sh
 
 # expect <exit code> <name> <expected output>: on $code and $out of a run.
 expect() {
@@ -125,7 +134,7 @@ reset() {
 # checks <exit code> <name> <expected output>: bin/release.sh --check.
 checks() {
   code=0
-  out=$(cd "$repo" && env "${env_[@]}" bash bin/release.sh --check "${args[@]}" 2>&1) || code=$?
+  out=$(cd "$repo" && env "${env_[@]}" bash bin/release.sh --check 2>&1) || code=$?
   expect "$@"
 }
 # run <answer> <exit code> <name> <expected output>: bin/release.sh in a terminal (script, util-linux
@@ -135,7 +144,7 @@ run() {
   local answer=$1 cmd
   shift
   rm -f "$t/ended"
-  cmd="bash bin/release.sh ${args[*]}"
+  cmd="bash bin/release.sh"
   out=$({ printf '%s\n' "$answer"; while [ ! -e "$t/ended" ]; do sleep 0.1; done; } |
     { cd "$repo" && if script --version 2>/dev/null | grep -q util-linux; then
         env "${env_[@]}" timeout 60 script -qec "$cmd" /dev/null
@@ -207,6 +216,59 @@ for v in 9.10.0 9.09.9 9.9.8; do
   tgit -C "$repo" update-ref -d "refs/tags/v$v"
 done
 GH_CI="completed failure" checks 1 "CI not green on main stops the checks" "release: CI on main at $short is not green (completed failure)"
+
+echo "== bin/release.sh, its values from main's head"
+checks 0 "the header shows the version from CHANGELOG.md" "Recipes release 9.9.9"
+expect 0 "the header shows the helper from ci.yml" "  helper   needs $helper (released ✓)"
+expect 0 "the header shows the providers from providers" "  targets  example on ubuntu-26.04"
+for extra in 9.9.9 "--check 9.9.9" "9.9.9 $helper example" --verify; do
+  code=0
+  # shellcheck disable=SC2086 # the words of $extra
+  out=$(cd "$repo" && env "${env_[@]}" bash bin/release.sh $extra 2>&1) || code=$?
+  expect 2 "an argument is refused: $extra" "Usage: bin/release.sh [--check]"
+done
+# refused <name> <expected output> <shell code>: main's head with the code run on it, committed,
+# stops the checks; then main is back at $head.
+refused() {
+  (cd "$repo" && eval "$3")
+  tgit -C "$repo" add -A
+  tgit -C "$repo" commit -qm "$1"
+  checks 1 "$1" "release: $2"
+  tgit -C "$repo" reset -q --hard "$head"
+}
+ci=.github/workflows/ci.yml
+refused "no CHANGELOG.md" "no CHANGELOG.md at" 'rm CHANGELOG.md'
+refused "no version in CHANGELOG.md" "CHANGELOG.md: no ## VERSION heading after ## Unreleased" \
+  "printf '# Changelog\n\n## Unreleased\n' > CHANGELOG.md"
+refused "a line under ## Unreleased" "CHANGELOG.md: ## Unreleased is not empty: move its lines under a version" \
+  "printf '# Changelog\n\n## Unreleased\n\n- Not released.\n\n## 9.9.9\n' > CHANGELOG.md"
+refused "no ## Unreleased" "CHANGELOG.md: the first heading is not ## Unreleased" \
+  "printf '# Changelog\n\n## 9.9.9\n' > CHANGELOG.md"
+refused "no ## Unreleased at all" "CHANGELOG.md: no ## Unreleased heading" "printf '# Changelog\n' > CHANGELOG.md"
+refused "a version heading that is no version" "CHANGELOG.md: the heading after ## Unreleased is not ## VERSION" \
+  "printf '# Changelog\n\n## Unreleased\n\n## 9.9.9 (soon)\n' > CHANGELOG.md"
+refused "HELPER_TAG no version" ".github/workflows/ci.yml: HELPER_TAG is not vN.N.N:   HELPER_TAG: latest" \
+  "sed -i.bak 's/^  HELPER_TAG: .*/  HELPER_TAG: latest/' $ci && rm $ci.bak"
+refused "HELPER_TAG with more after it" ".github/workflows/ci.yml: HELPER_TAG is not vN.N.N" \
+  "sed -i.bak 's/^  HELPER_TAG: .*/& # v9.0.0/' $ci && rm $ci.bak"
+refused "no HELPER_TAG" ".github/workflows/ci.yml: not one HELPER_TAG line" "sed -i.bak '/^  HELPER_TAG: /d' $ci && rm $ci.bak"
+# A helper version GitHub doesn't have: pushed, so the checks get to it.
+sed -i.bak 's/^  HELPER_TAG: .*/  HELPER_TAG: v1.2.4/' "$repo/$ci" && rm "$repo/$ci.bak"
+tgit -C "$repo" commit -qam "helper 1.2.4"
+tgit -C "$repo" push -q origin main
+checks 1 "a helper version not released stops the checks" "release: no eeploi-helper release v1.2.4"
+expect 1 "the header shows the helper not released" "  helper   needs 1.2.4 (NOT released)"
+tgit -C "$repo" reset -q --hard "$head"
+tgit -C "$repo" push -q -f origin main
+refused "HELPER_TAG with a leading zero" ".github/workflows/ci.yml: HELPER_TAG is not vN.N.N" \
+  "sed -i.bak 's/^  HELPER_TAG: .*/  HELPER_TAG: v1.02.3/' $ci && rm $ci.bak"
+refused "a version with a leading zero" "CHANGELOG.md: the heading after ## Unreleased is not ## VERSION" \
+  "printf '# Changelog\\n\\n## Unreleased\\n\\n## 9.09.9\\n' > CHANGELOG.md"
+refused "HELPER_TAG twice" ".github/workflows/ci.yml: not one HELPER_TAG line" "echo '  HELPER_TAG: v9.0.0' >> $ci"
+refused "no providers file" "no providers at" 'rm providers'
+refused "no provider" "providers: no provider" "echo '# none' > providers"
+refused "a provider the helper refuses" "providers: Example is no provider name" "echo Example >> providers"
+refused "a provider twice" "providers: example is there twice" "echo example >> providers"
 
 echo "== bin/release.sh"
 run n 1 "no at the question" "release: not published"

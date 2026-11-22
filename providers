@@ -1,0 +1,3 @@
+# The providers a release is built for, one per line: bin/release.sh makes a manifest for each.
+# A name by the helper's rule (recipe-run): a-z, 0-9 and inner -, at most 32.
+hetzner
