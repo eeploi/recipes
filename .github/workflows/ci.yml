@@ -276,7 +276,7 @@ jobs:
       # the services still run after all of them. Then 07's check must fail with one interface
       # that sends redirects, with Ubuntu's origins added to ours (no #clear; with it, an origin
       # pattern in an earlier file is cleared), without the conffile options, with ctrl-alt-del.target
-      # unmasked, with CtrlAltDelBurstAction back at reboot-force (running, then in the file only),
+      # unmasked, with CtrlAltDelBurstAction back at reboot-force (in the file, then running too),
       # and without its apt lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
@@ -295,38 +295,30 @@ jobs:
             bin/run-twice.sh
             systemctl is-active fail2ban nginx
             bin/render.sh --check stack/07-updates.sh > /tmp/check-07
+            fails_07() { if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with $1"; exit 1; fi; grep -qxF "$2" /tmp/out-07; }
             echo 1 > /proc/sys/net/ipv4/conf/lo/send_redirects
-            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with lo sending redirects"; exit 1; fi
-            grep -qxF "/proc/sys/net/ipv4/conf/lo/send_redirects is not 0" /tmp/out-07
+            fails_07 "lo sending redirects" "/proc/sys/net/ipv4/conf/lo/send_redirects is not 0"
             echo 0 > /proc/sys/net/ipv4/conf/lo/send_redirects
             bash /tmp/check-07
             cp /etc/apt/apt.conf.d/52eeploi-unattended /tmp/52eeploi-unattended
             echo "Unattended-Upgrade::Origins-Pattern { \"origin=*\"; };" > /etc/apt/apt.conf.d/51zzz
             bash /tmp/check-07
             sed -i "/^#clear/d" /etc/apt/apt.conf.d/52eeploi-unattended
-            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with the Ubuntu origins added up"; exit 1; fi
-            grep -qxF "unattended-upgrades: not the origins eeploi sets" /tmp/out-07
+            fails_07 "the Ubuntu origins added up" "unattended-upgrades: not the origins eeploi sets"
             rm /etc/apt/apt.conf.d/51zzz
             cp /tmp/52eeploi-unattended /etc/apt/apt.conf.d/52eeploi-unattended
             rm /etc/apt/apt.conf.d/52eeploi-conffiles
-            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed without confold"; exit 1; fi
-            grep -qxF "dpkg: not --force-confdef" /tmp/out-07
+            fails_07 "no confold" "dpkg: not --force-confdef"
             bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
             systemctl unmask --quiet ctrl-alt-del.target
-            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with ctrl-alt-del.target unmasked"; exit 1; fi
-            grep -qxF "ctrl-alt-del.target is not masked" /tmp/out-07
+            fails_07 "ctrl-alt-del.target unmasked" "ctrl-alt-del.target is not masked"
             systemctl mask --quiet ctrl-alt-del.target
             cad=/etc/systemd/system.conf.d/60-eeploi-ctrl-alt-del.conf
             sed -i "s/=none$/=reboot-force/" "$cad"
+            fails_07 "reboot-force in the file" "60-eeploi-ctrl-alt-del.conf: not CtrlAltDelBurstAction=none"
             systemctl daemon-reexec
-            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with the burst action reboot-force"; exit 1; fi
-            grep -qxF "CtrlAltDelBurstAction is not none" /tmp/out-07
-            bash <(bin/render.sh --step stack/07-updates.sh)
-            bash /tmp/check-07
-            sed -i "s/=none$/=reboot-force/" "$cad"
-            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with reboot-force in the file"; exit 1; fi
-            grep -qxF "60-eeploi-ctrl-alt-del.conf: not CtrlAltDelBurstAction=none" /tmp/out-07
+            fails_07 "the burst action reboot-force" "CtrlAltDelBurstAction is not none"
             bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
             rm /etc/apt/apt.conf.d/20auto-upgrades
