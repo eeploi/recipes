@@ -96,7 +96,7 @@ jobs:
           (cd "$RUNNER_TEMP/package" && sha256sum -c --quiet "$RUNNER_TEMP/sums")
           diff <(tar -tzf dist/99.0.0/recipes-99.0.0.tar.gz | grep -v '/$' | LC_ALL=C sort) <(awk '{ print $2 }' "$RUNNER_TEMP/sums" | LC_ALL=C sort)
           diff <(awk '$1 == "step" { print $NF }' "$manifest") <(grep -E '/[0-9]{2}-[^/]*\.sh$' ubuntu-26.04/steps)
-          diff <(awk '$1 == "file" && $NF ~ /\.probe\.sh$/ { print $NF }' "$manifest") <(grep -v '^#' ubuntu-26.04/probes)
+          diff <(awk '$1 == "file" && $NF ~ /\.probe\.sh$/ { print $NF }' "$manifest") <(grep -vE '^(#|$)' ubuntu-26.04/probes)
 
       # The release above, signed with a throwaway key: it verifies against that key, and fails
       # against the recipes key in minisign.pub, with a manifest signed by another key, a changed
@@ -804,77 +804,12 @@ jobs:
               -p 10022 deploy@127.0.0.1 true
             ssh-keygen -F "[127.0.0.1]:10022" -f /root/known_hosts | grep -q ssh-ed25519'
 
-      # The probes on the whole server, with secrets planted where a probe reads: in an nginx server
-      # block (in a quoted ; and a comment too), a PHP-FPM pool and ini file, apt's config, SSH's,
-      # MariaDB's and a UFW rule's comment; Redis with a password, and an IP banned. With PostgreSQL
-      # too, with Ubuntu's PHP, its password in a conf.d file. Each probe, run twice as the helper
-      # runs it, leaves /etc, fail2ban and nginx as they were, prints none of them and the lines
-      # expected (bin/test-probes.sh). Then a probe with a line more that prints a secret, writes to
-      # /etc, or writes to stderr fails it. Last, the server as it was, for the reports below.
+      # The probes on the whole server, with secrets planted where a probe reads and an IP banned:
+      # none of them shows, the lines expected do, and a probe that leaks, writes to /etc or to
+      # stderr fails the test (bin/test-probes-server.sh). The server is as it was after, for the
+      # reports below.
       - name: server, the probes
-        run: |
-          docker exec server bash -euc '
-            v=$(sed -n "s/^PHP=//p" /etc/eeploi/recipes.conf)
-            if [ "$v" = 8.5 ]; then
-              DEBIAN_FRONTEND=noninteractive apt-get install -yq postgresql > /dev/null
-              for d in /etc/postgresql/*/main/conf.d; do echo "primary_conninfo = '"'"'host=db.example password=PLANTED-pg'"'"'" > "$d/99-planted.conf"; done
-            fi
-            printf "%s\n" "server {" "    listen 8081;" "    server_name planted.example;" \
-              "    add_header X-Planted \"a; listen PLANTED-nginx-quote\";" \
-              "    fastcgi_param APP_KEY PLANTED-nginx-param; # listen PLANTED-nginx-comment" "}" > /etc/nginx/conf.d/planted.conf
-            nginx -t
-            www=/etc/php/$v/fpm/pool.d/www.conf
-            cp "$www" /root/www.conf
-            printf "env[DB_PASSWORD] = PLANTED-fpm-env\nphp_admin_value[mysqli.default_pw] = PLANTED-fpm-admin\n" >> "$www"
-            echo "mysqli.default_pw = PLANTED-php-ini" > "/etc/php/$v/fpm/conf.d/99-planted.ini"
-            echo "Acquire::http::Proxy \"http://user:PLANTED-apt@proxy.example:3128\";" > /etc/apt/apt.conf.d/99planted
-            echo "Banner /etc/ssh/PLANTED-ssh" > /etc/ssh/sshd_config.d/99-planted.conf
-            printf "[mysqld]\nplanted-option = PLANTED-mysql\n" > /etc/mysql/mariadb.conf.d/99-planted.cnf
-            ufw allow 8082/tcp comment PLANTED-ufw > /dev/null
-            cp /etc/redis/redis.conf /root/redis.conf
-            echo "requirepass PLANTED-redis" >> /etc/redis/redis.conf
-            systemctl restart redis-server
-            fail2ban-client set sshd banip 203.0.113.7 > /dev/null
-            composer=$(COMPOSER_ALLOW_SUPERUSER=1 composer --version --no-plugins --no-interaction 2> /dev/null | awk "{ print \$3; exit }")
-            npm=$(grep -o "npm@[0-9.]*\$" /root/by-hand.sh)
-            expect=(
-              "ssh:^port 10022\$" "ssh:^permitrootlogin no\$" "ssh:^passwordauthentication no\$" "ssh:^allowusers deploy\$"
-              "ufw:^status active\$" "ufw:^rule 10022/tcp ALLOW IN Anywhere\$" "ufw:^rule 8082/tcp ALLOW IN Anywhere\$"
-              "fail2ban:^running yes\$" "fail2ban:^jail sshd banned 1 total-banned 1 " "fail2ban:^jail recidive banned "
-              "apt:^dpkg-option --force-confold\$" "apt:^allowed-origin [\$][{]distro_id[}]:[\$][{]distro_codename[}]-security\$"
-              "apt:^updates [0-9]+\$" "apt:^security-updates [0-9]+\$"
-              "kernel:^module sctp blocked not-loaded\$" "kernel:^sysctl net[.]ipv4[.]conf[.][*][.]send_redirects 0\$"
-              "nginx:^server [0-9]+ ssl_reject_handshake on\$" "nginx:^server [0-9]+ listen 443 ssl default_server\$"
-              "nginx:^server [0-9]+ server_name planted[.]example\$" "nginx:^server [0-9]+ listen 8081\$"
-              "nginx:^http fastcgi_buffer_size 32k\$"
-              "php-fpm:^pool $v www pm[.]max_children 2\$" "php-fpm:^pool $v www listen[.]mode 0600\$"
-              "php-fpm:^ini $v expose_php Off\$" "php-fpm:^ini $v opcache[.]validate_permission On\$"
-              "mysql:^option bind-address 127[.]0[.]0[.]1\$"
-              "redis:^listen 127[.]0[.]0[.]1:6379\$" "redis:^password yes\$"
-              "versions:^package nginx " "versions:^package php$v-fpm " "versions:^package mariadb-server "
-              "versions:^npm ${npm#npm@}\$" "versions:^composer $composer\$"
-            )
-            [ "$v" != 8.5 ] || expect+=("postgresql:^cluster [0-9]+/main port 5432\$" "postgresql:^cluster [0-9]+/main listen_addresses localhost\$")
-            args=(--secret PLANTED --secret 203.0.113.7)
-            for e in "${expect[@]}"; do args+=(--expect "$e"); done
-            bin/test-probes.sh "${args[@]}"
-            cp -a /recipes /tmp/probes
-            cd /tmp/probes
-            for line in "echo leak PLANTED-x" "touch /etc/written" "echo oops >&2"; do
-              cp /recipes/stack/04-ssh.probe.sh stack/
-              echo "$line" >> stack/04-ssh.probe.sh
-              if out=$(bin/test-probes.sh --secret PLANTED); then echo "$out"; echo "a probe with $line passed"; exit 1; fi
-              rm -f /etc/written
-            done
-            cd /recipes
-            rm /etc/nginx/conf.d/planted.conf "/etc/php/$v/fpm/conf.d/99-planted.ini" /etc/apt/apt.conf.d/99planted \
-              /etc/ssh/sshd_config.d/99-planted.conf /etc/mysql/mariadb.conf.d/99-planted.cnf
-            cp /root/www.conf "$www"
-            cp /root/redis.conf /etc/redis/redis.conf
-            systemctl restart redis-server
-            ufw delete allow 8082/tcp > /dev/null
-            fail2ban-client set sshd unbanip 203.0.113.7 > /dev/null
-            rm -f /etc/postgresql/*/main/conf.d/99-planted.conf'
+        run: docker exec server bin/test-probes-server.sh
 
       # D-8: ssh-audit (Ubuntu's package) against the server's SSH: a report on the crypto, never a gate.
       - name: server, ssh-audit report

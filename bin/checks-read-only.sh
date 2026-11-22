@@ -10,14 +10,8 @@ cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# A step or check runs as the helper runs it (recipe-run): from /, with its PATH and a clean environment.
-as_helper() { (cd / && exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LC_ALL=C TMPDIR=/tmp bash "$1") < /dev/null; }
-
-# A restart changes the main PID. Only these two: other units, timers among them, change on their own.
-state() {
-  bin/etc-state.sh
-  systemctl show -p Id,ActiveState,MainPID fail2ban nginx
-}
+# shellcheck source=bin/helper-env.sh
+. bin/helper-env.sh
 
 fail=0
 while IFS= read -r file; do

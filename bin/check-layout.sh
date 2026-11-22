@@ -19,24 +19,18 @@ path_name="^$part(/$part)*\$"
 
 fail=0
 bad() { echo "$1: $2"; fail=1; }
+# entry_ok LIST FILE: FILE, an entry of LIST, has a path the helper takes, exists and is no link.
+entry_ok() {
+  if ! [[ "$2" =~ $path_name ]]; then bad "$1" "$2 is no path the helper takes: each part $part"; return 1; fi
+  [ -f "$2" ] || { bad "$1" "$2 does not exist"; return 1; }
+  [ ! -L "$2" ] || { bad "$1" "$2 is a link"; return 1; }
+}
 
 # shellcheck disable=SC2094 # bad() only prints
 for list in ubuntu-*/steps; do
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
-
-    if ! [[ "$file" =~ $path_name ]]; then
-      bad "$list" "$file is no path the helper takes: each part $part"
-      continue
-    fi
-    if [ ! -f "$file" ]; then
-      bad "$list" "$file does not exist"
-      continue
-    fi
-    if [ -L "$file" ]; then
-      bad "$list" "$file is a link"
-      continue
-    fi
+    entry_ok "$list" "$file" || continue
 
     name=${file##*/}
     case "$name" in [0-9][0-9]-*.sh) ;; *) continue ;; esac # start.sh and values.sh are no steps
@@ -71,16 +65,9 @@ for steps in ubuntu-*/steps; do
   # shellcheck disable=SC2094 # bad() only prints
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
-    if ! [[ "$file" =~ $path_name ]]; then
-      bad "$list" "$file is no path the helper takes: each part $part"
-      continue
-    fi
-    [[ "$file" =~ /[0-9][0-9]-[a-z0-9-]+\.probe\.sh$ ]] || { bad "$list" "$file is not named NN-name.probe.sh"; continue; }
-    [ -f "$file" ] || { bad "$list" "$file does not exist"; continue; }
-    [ ! -L "$file" ] || { bad "$list" "$file is a link"; continue; }
-    name=${file##*/}
-    name=${name#[0-9][0-9]-}
-    name=${name%.probe.sh}
+    entry_ok "$list" "$file" || continue
+    [[ "$file" =~ /[0-9][0-9]-([a-z0-9-]+)\.probe\.sh$ ]] || { bad "$list" "$file is not named NN-name.probe.sh"; continue; }
+    name=${BASH_REMATCH[1]}
     case "$names" in *" $name "*) bad "$list" "$file: another probe is named $name" ;; esac
     names+="$name "
     listed+="$file "

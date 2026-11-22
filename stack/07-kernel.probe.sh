@@ -10,18 +10,14 @@ safe=('net.ipv4.conf.*.accept_redirects' 'net.ipv6.conf.*.accept_redirects' 'net
 [ "${1:-}" != --safe ] || { printf '%s\n' "${safe[@]}"; exit 0; }
 
 shopt -s nullglob
-sysctl() {
-  local name=$1 values
-  shift
-  # An interface that goes away while this runs is skipped.
-  values=$(for f in "$@"; do cat "$f" 2> /dev/null || true; done | LC_ALL=C sort -u | paste -sd, -)
+for name in "${safe[@]}"; do
+  [[ $name == net.* ]] || continue
+  # The name's file in /proc/sys, its * a glob. An interface that goes away while this runs is skipped.
+  # shellcheck disable=SC2206 # the glob on purpose
+  files=(/proc/sys/${name//.//})
+  values=$(cat ${files[@]+"${files[@]}"} 2> /dev/null | LC_ALL=C sort -u | paste -sd, -) || true
   [ -z "$values" ] || echo "sysctl $name $values"
-}
-sysctl 'net.ipv4.conf.*.accept_redirects' /proc/sys/net/ipv4/conf/*/accept_redirects
-sysctl 'net.ipv6.conf.*.accept_redirects' /proc/sys/net/ipv6/conf/*/accept_redirects
-sysctl 'net.ipv4.conf.*.send_redirects' /proc/sys/net/ipv4/conf/*/send_redirects
-sysctl net.ipv4.conf.all.log_martians /proc/sys/net/ipv4/conf/all/log_martians
-sysctl net.ipv4.conf.default.log_martians /proc/sys/net/ipv4/conf/default/log_martians
+done
 
 command -v modprobe > /dev/null || exit 0
 for module in sctp rds tipc; do

@@ -12,14 +12,13 @@ safe=(Unattended-Upgrade::Allowed-Origins Unattended-Upgrade::Origins-Pattern Un
 command -v apt-config > /dev/null || exit 0
 config=$(apt-config dump 2> /dev/null)
 # Only these keys: apt's config can hold a proxy's password.
-awk 'function value() { v = $0; sub(/^[^ ]+ /, "", v); sub(/;$/, "", v); gsub(/"/, "", v); return v }
-  $1 == "Unattended-Upgrade::Allowed-Origins::" { print "allowed-origin " value() }
-  $1 == "Unattended-Upgrade::Origins-Pattern::" { print "origin-pattern " value() }
-  $1 == "Unattended-Upgrade::Automatic-Reboot" { print "automatic-reboot " value() }
-  tolower($1) == "dpkg::options::" { print "dpkg-option " value() }
-  $1 == "APT::Periodic::Update-Package-Lists" { print "periodic-update-package-lists " value() }
-  $1 == "APT::Periodic::Unattended-Upgrade" { print "periodic-unattended-upgrade " value() }' <<< "$config" \
-  | grep -v ' $' || true
+awk 'function show(key,   v) { v = $0; sub(/^[^ ]+ /, "", v); sub(/;$/, "", v); gsub(/"/, "", v); if (v != "") print key " " v }
+  $1 == "Unattended-Upgrade::Allowed-Origins::" { show("allowed-origin") }
+  $1 == "Unattended-Upgrade::Origins-Pattern::" { show("origin-pattern") }
+  $1 == "Unattended-Upgrade::Automatic-Reboot" { show("automatic-reboot") }
+  tolower($1) == "dpkg::options::" { show("dpkg-option") }
+  $1 == "APT::Periodic::Update-Package-Lists" { show("periodic-update-package-lists") }
+  $1 == "APT::Periodic::Unattended-Upgrade" { show("periodic-unattended-upgrade") }' <<< "$config"
 
 # D-20: the updates waiting, from the package lists on the server: a simulated upgrade, no lock
 # taken and no cache written.

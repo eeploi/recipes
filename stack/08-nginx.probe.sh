@@ -6,10 +6,10 @@
 # Lines: server <n> file <path>, server <n> <directive> <arguments>, http <directive> <arguments>;
 # n counts the server blocks in the order nginx -T prints them.
 set -euo pipefail
-# The settings whose values are safe to show.
-safe=(listen server_name ssl_reject_handshake server_tokens fastcgi_buffer_size fastcgi_buffers
-  real_ip_header set_real_ip_from)
-[ "${1:-}" != --safe ] || { printf '%s\n' "${safe[@]}"; exit 0; }
+# The directives shown, and the settings whose values are safe to show: in a server block, and in http.
+server_safe=(listen server_name ssl_reject_handshake)
+http_safe=(server_tokens fastcgi_buffer_size fastcgi_buffers real_ip_header set_real_ip_from)
+[ "${1:-}" != --safe ] || { printf '%s\n' "${server_safe[@]}" "${http_safe[@]}"; exit 0; }
 
 command -v nginx > /dev/null || exit 0
 # D-17: nginx -T reads the config on disk, not the running nginx.
@@ -21,15 +21,15 @@ config=$(nginx -T 2> /dev/null)
 # top of a file is one that http or stream included, and a directive there is an http one. Limit:
 # so is one from a file included inside a server block, such as a snippet.
 # shellcheck disable=SC2016 # awk's $
-awk -v server_dirs=' listen server_name ssl_reject_handshake ' \
-  -v http_dirs=' server_tokens fastcgi_buffer_size fastcgi_buffers real_ip_header ' '
+awk -v server_dirs=" ${server_safe[*]} " -v http_dirs=" ${http_safe[*]} " '
 function word() { if (tok != "" || quoted) { args[n++] = tok }; tok = ""; quoted = 0 }
-function directive(   i, s) {
+function emit(prefix,   i, s) { s = prefix " " args[0]; for (i = 1; i < n; i++) s = s " " args[i]; print s }
+function directive() {
   if (n == 0) return
   if (stack[depth] == "server" && id[depth]) {
-    if (index(server_dirs, " " args[0] " ")) { s = "server " id[depth] " " args[0]; for (i = 1; i < n; i++) s = s " " args[i]; print s }
+    if (index(server_dirs, " " args[0] " ")) emit("server " id[depth])
   } else if (depth == 0 || (depth == 1 && stack[1] == "http")) {
-    if (index(http_dirs, " " args[0] " ")) { s = "http " args[0]; for (i = 1; i < n; i++) s = s " " args[i]; print s }
+    if (index(http_dirs, " " args[0] " ")) emit("http")
   }
   n = 0
 }
@@ -61,7 +61,7 @@ q == "" && /^# configuration file .*:$/ { file = substr($0, 22, length($0) - 22)
     if (c == " " || c == "\t" || c == "\r" || c == "\n") { word(); continue }
     if (c == ";") { word(); directive(); continue }
     if (c == "{") { word(); block_start(); continue }
-    if (c == "}") { word(); n = 0; block_end(); continue }
+    if (c == "}") { word(); block_end(); continue }
     if (c == "\\") { tok = tok c substr(line, i + 1, 1); i++; continue }
     tok = tok c
   }

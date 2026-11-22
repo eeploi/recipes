@@ -19,7 +19,7 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 | `stack/` | The steps every Ubuntu release shares: apt retries, the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start; and their probes |
 | `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the list of probes (`probes`), the packages (`01-packages.sh`) and their probes, and the source for another PHP version than Ubuntu's (`php-source.sh`) |
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
-| `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test that each check is read-only (CI), the test of the report to eeploi (CI), the test of the PHP source's retry (CI), the test of the probes (CI), and the release command and its build |
+| `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test that each check is read-only (CI), the test of the report to eeploi (CI), the test of the PHP source's retry (CI), the tests of the probes (CI), and the release command and its build |
 
 ## Decisions
 
@@ -93,7 +93,7 @@ A probe prints the settings in effect for one piece of software, so a report can
 | `apt` | `stack/07-apt.probe.sh` | `apt-config dump`, `apt-get -s dist-upgrade` | `allowed-origin`, `origin-pattern`, `dpkg-option`, `automatic-reboot`, `periodic-*`; `updates <n>`, `security-updates <n>` and `lists-updated <time>`, from the lists on the server (D-20) |
 | `kernel` | `stack/07-kernel.probe.sh` | `/proc/sys`, `modprobe -n -v` | `sysctl <name> <value>` for the settings step 7 sets (with `*`: every interface's values); `module <sctp\|rds\|tipc> <blocked\|loadable\|not-found> <loaded\|not-loaded>` |
 | `needrestart` | `stack/07-needrestart.probe.sh` | `needrestart -b -r l` | `kernel <current\|abi-upgrade\|upgrade\|unknown>`, `kernel-running`, `kernel-expected`, `microcode`, `service <unit>` |
-| `nginx` | `stack/08-nginx.probe.sh` | `nginx -T` | `server <n> file <path>`, `server <n> listen\|server_name\|ssl_reject_handshake <arguments>`; `http server_tokens\|fastcgi_buffer_size\|fastcgi_buffers\|real_ip_header <arguments>` |
+| `nginx` | `stack/08-nginx.probe.sh` | `nginx -T` | `server <n> file <path>`, `server <n> listen\|server_name\|ssl_reject_handshake <arguments>`; `http server_tokens\|fastcgi_buffer_size\|fastcgi_buffers\|real_ip_header\|set_real_ip_from <arguments>` |
 | `php-fpm` | `ubuntu-26.04/01-php-fpm.probe.sh` | `php-fpm<v> -tt`, `php-fpm<v> -i` | `pool <v> <pool> <setting> <value>`: user, group, listen and its owner, group and mode, pm, max children and requests; `ini <v> expose_php\|session.upload_progress.enabled\|opcache.validate_permission <value>` |
 | `postgresql` | `ubuntu-26.04/01-postgresql.probe.sh` | `postgres -C`, per cluster | `cluster <v>/<name> <setting> <value>`: listen addresses, port, SSL, password encryption, max connections |
 | `mysql` | `ubuntu-26.04/01-mysql.probe.sh` | `mariadbd` or `mysqld --print-defaults` | `option <name> <value>`: bind address, port, networking, `local-infile`, max connections, secure transport, name resolve |

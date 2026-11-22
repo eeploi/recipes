@@ -26,26 +26,19 @@ done
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# A probe runs as the helper runs a check (recipe-run): from /, with its PATH and a clean environment.
-as_helper() { (cd / && exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LC_ALL=C TMPDIR=/tmp bash "$@") < /dev/null; }
-
-# A restart changes the main PID. Only these two, and only with systemd running.
-state() {
-  bin/etc-state.sh
-  if [ -d /run/systemd/system ]; then systemctl show -p Id,ActiveState,MainPID fail2ban nginx; fi
-}
+# shellcheck source=bin/helper-env.sh
+. bin/helper-env.sh
 
 fail=0
 bad() { echo "$1: $2"; fail=1; }
 state > "$tmp/before"
-while IFS= read -r file || [ -n "$file" ]; do
-  case "$file" in '' | '#'*) continue ;; esac
+while IFS= read -r file; do
   name=${file##*/}
   name=${name#[0-9][0-9]-}
   name=${name%.probe.sh}
   for run in 1 2; do
     rc=0
-    as_helper "$file" > "$tmp/$name.out" 2> "$tmp/$name.err" || rc=$?
+    as_helper "$PWD/$file" > "$tmp/$name.out" 2> "$tmp/$name.err" || rc=$?
     [ "$rc" -eq 0 ] || bad "$file" "exits $rc (run $run)"
     [ ! -s "$tmp/$name.err" ] || { bad "$file" "writes to stderr (run $run):"; cat "$tmp/$name.err"; }
   done
@@ -63,11 +56,11 @@ while IFS= read -r file || [ -n "$file" ]; do
     grep -qE -- "${expect#*:}" "$tmp/$name.out" || bad "$file" "no line matches ${expect#*:}"
   done
   rc=0
-  as_helper "$file" --safe > "$tmp/$name.safe" 2> "$tmp/$name.err" || rc=$?
+  as_helper "$PWD/$file" --safe > "$tmp/$name.safe" 2> "$tmp/$name.err" || rc=$?
   [ "$rc" -eq 0 ] || bad "$file" "--safe exits $rc"
   [ ! -s "$tmp/$name.err" ] || bad "$file" "--safe writes to stderr"
   if grep -vnE '^[^[:space:]]+$' "$tmp/$name.safe"; then bad "$file" "--safe prints the lines above, not one name each"; fi
-done < ubuntu-26.04/probes
+done < <(grep -vE '^(#|$)' ubuntu-26.04/probes)
 state > "$tmp/after"
 diff "$tmp/before" "$tmp/after" || bad probes "changed the server"
 
