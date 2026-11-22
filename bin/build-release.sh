@@ -52,7 +52,7 @@ git archive "$tag" | tar -x -C "$tmp/tree"
 # The manifest takes its file names and values from these. bash drops a NUL when it reads a line,
 # here and in the helper, so a NUL in them would change a name or value unseen. Then every path
 # the manifest will hold, before bin/check-layout.sh reads them.
-for file in "$tmp"/tree/ubuntu-*/steps "$tmp/tree/markers"; do
+for file in "$tmp"/tree/ubuntu-*/steps "$tmp"/tree/ubuntu-*/probes "$tmp/tree/markers"; do
   [ -f "$file" ] || { echo "${file#"$tmp/tree/"} is not in $tag" >&2; exit 1; }
   # shellcheck disable=SC2094 # both only read it
   tr -d '\000' < "$file" | cmp -s - "$file" || { echo "${file#"$tmp/tree/"} in $tag holds a NUL" >&2; exit 1; }
@@ -60,10 +60,11 @@ done
 path_ok() { [[ "$1" =~ $path_name ]] || { echo "$1 is no path the helper takes: each part $part" >&2; exit 1; }; }
 for list in "$tmp"/tree/ubuntu-*/steps; do
   path_ok "$(basename "$(dirname "$list")")/php-source.sh"
+  [ -f "${list%/steps}/probes" ] || { echo "${list#"$tmp/tree/"}: no probes next to it in $tag" >&2; exit 1; }
   while IFS= read -r file || [ -n "$file" ]; do
     case "$file" in '' | '#'*) continue ;; esac
     path_ok "$file"
-  done < "$list"
+  done < <(cat "$list" "${list%/steps}/probes")
 done
 "$tmp/tree/bin/check-layout.sh" >/dev/null || { echo "$tag fails bin/check-layout.sh" >&2; exit 1; }
 
@@ -110,10 +111,16 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
       *) files+=("$file") ;;
     esac
   done < "$list" > "$body"
+  # The probes, in the order of their list.
+  probes=()
+  while IFS= read -r file || [ -n "$file" ]; do
+    case "$file" in '' | '#'*) continue ;; esac
+    probes+=("$file")
+  done < "$tmp/tree/$os/probes"
   for file in "$os/php-source.sh" stack/fingerprint.sh; do
     [ -f "$tmp/tree/$file" ] || { echo "$file is not in $tag" >&2; exit 1; }
   done
-  for file in "${files[@]}" "${checks[@]}" "$os/php-source.sh" stack/fingerprint.sh; do
+  for file in "${files[@]}" "${checks[@]}" ${probes[@]+"${probes[@]}"} "$os/php-source.sh" stack/fingerprint.sh; do
     echo "file $(sha "$file") $file"
     paths+=("$file")
   done >> "$body"

@@ -2,8 +2,9 @@
 # Checks the repo layout: every file in ubuntu-*/steps has a path the helper takes, exists and is no
 # link, and every step in it sets STEP=, has its .check.sh next to it, has one marker in markers
 # and is in the README table.
-# An always step holds only the values the helper fills (bin/render.sh --step). Every D-n a comment
-# names is an entry in DECISIONS.md, numbered in order.
+# An always step holds only the values the helper fills (bin/render.sh --step). Each list of steps
+# has a list of probes, whose probes are named, listed and in the README as below. Every D-n a
+# comment names is an entry in DECISIONS.md, numbered in order.
 set -uo pipefail
 export LC_ALL=C # the path rule below matches ASCII only, as the helper's
 cd "$(dirname "$0")/.." || exit 1
@@ -58,6 +59,40 @@ for list in ubuntu-*/steps; do
   done < "$list"
 done
 
+# Every list of steps has a list of probes next to it. Each probe in it has a path the helper
+# takes, exists, is no link, is named NN-name.probe.sh with a name no other probe in the list has,
+# holds no {name} value (nothing fills it) and is in the README's probe table. Every probe in the
+# repo is in a list.
+listed=' '
+for steps in ubuntu-*/steps; do
+  list=${steps%/steps}/probes
+  [ -f "$list" ] || { bad "$list" "does not exist"; continue; }
+  names=' '
+  # shellcheck disable=SC2094 # bad() only prints
+  while IFS= read -r file || [ -n "$file" ]; do
+    case "$file" in '' | '#'*) continue ;; esac
+    if ! [[ "$file" =~ $path_name ]]; then
+      bad "$list" "$file is no path the helper takes: each part $part"
+      continue
+    fi
+    [[ "$file" =~ /[0-9][0-9]-[a-z0-9-]+\.probe\.sh$ ]] || { bad "$list" "$file is not named NN-name.probe.sh"; continue; }
+    [ -f "$file" ] || { bad "$list" "$file does not exist"; continue; }
+    [ ! -L "$file" ] || { bad "$list" "$file is a link"; continue; }
+    name=${file##*/}
+    name=${name#[0-9][0-9]-}
+    name=${name%.probe.sh}
+    case "$names" in *" $name "*) bad "$list" "$file: another probe is named $name" ;; esac
+    names+="$name "
+    listed+="$file "
+    # shellcheck disable=SC2016 # the $ is in a regex
+    ! grep -qE '(^|[^$A-Za-z0-9_])\{[a-z_]+\}' "$file" || bad "$file" "holds a {name} value, which nothing fills in a probe"
+    grep -qF "\`$file\`" README.md || bad "$file" "is not in the README probe table"
+  done < "$list"
+done
+while IFS= read -r file; do
+  case "$listed" in *" $file "*) ;; *) bad "$file" "is in no list of probes" ;; esac
+done < <(find first-boot stack ubuntu-* -name '*.probe.sh' | LC_ALL=C sort)
+
 # Each line in markers: a known marker, a step that a list of steps runs, and known flags.
 # shellcheck disable=SC2094 # bad() only prints
 while read -r marker file flags rest || [ -n "$marker" ]; do
@@ -103,7 +138,7 @@ while IFS=: read -r file line text; do
   for id in $(grep -oE 'D-[0-9]+:' <<< "${text#*#}" | tr -d :); do
     case "$known" in *" $id "*) ;; *) bad "${file#./}:$line" "$id is not in DECISIONS.md" ;; esac
   done
-done < <(grep -rnE --include='*.sh' --include='*.yml' --include=markers --include=steps \
+done < <(grep -rnE --include='*.sh' --include='*.yml' --include=markers --include=steps --include=probes \
   --exclude-dir=.git --exclude-dir=dist '#.*D-[0-9]+:' . || true)
 
 [ "$fail" -eq 0 ] && echo "layout ok"
