@@ -564,10 +564,12 @@ jobs:
           docker exec server bash -euc '
             run() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper recipe-run 99.0.0 example 2>&1; }
             fails() { if out=$(run); then echo "$out"; echo "recipe-run passed: $1"; exit 1; fi
-              grep -qxF "check failed first-boot/00-lock-root.check.sh" <<< "$out" || { echo "$out"; exit 1; }; }
+              grep -qxF "check failed first-boot/00-lock-root.check.sh" <<< "$out" || { echo "$out"; exit 1; }
+              grep -qxF "root'\''s password is not locked: $2" <<< "$out" || { echo "$out"; echo "not the reason: $2"; exit 1; }; }
             note="note: root has a password (set after the first boot); root can'\''t log in over SSH"
             echo root:ci-root-password | chpasswd
-            fails "a root password at the first boot"
+            fails "a root password at the first boot" P
+            [ ! -e /var/lib/cloud ]
             install -d /var/lib/cloud/instance
             touch /var/lib/cloud/instance/boot-finished
             out=$(run) || { echo "$out"; echo "recipe-run failed with a root password after the first boot"; exit 1; }
@@ -575,9 +577,9 @@ jobs:
             grep -qxF "$note" <<< "$out"
             grep -qxF "check ok first-boot/00-lock-root.check.sh" <<< "$out"
             passwd -q -d root
-            fails "no root password after the first boot"
-            rm /var/lib/cloud/instance/boot-finished
-            fails "no root password at the first boot"
+            fails "no root password after the first boot" NP
+            rm -r /var/lib/cloud
+            fails "no root password at the first boot" NP
             passwd -q -l root
             out=$(run) || { echo "$out"; exit 1; }
             if grep -qxF "$note" <<< "$out"; then echo "a note with root locked"; exit 1; fi'
