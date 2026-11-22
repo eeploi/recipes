@@ -569,6 +569,34 @@ jobs:
             chmod 644 /etc/ssh/eeploi-moduli
             bash /root/ssh-check'
 
+      # PHP-FPM's stock [www] pool listens on a socket only root may open, and step 2's check passes.
+      # Then it fails, with its own message, on each [www] setting turned back and on expose_php or
+      # session upload progress on again in a later conf.d file.
+      - name: server, the PHP check
+        run: |
+          docker exec server bash -euc '
+            v=$(ls /etc/php)
+            [ "$(stat -c "%U:%G %a" "/run/php/php$v-fpm.sock")" = "root:root 600" ]
+            bin/render.sh --check stack/02-deploy-user.sh > /root/php-check
+            bash /root/php-check
+            www=/etc/php/$v/fpm/pool.d/www.conf
+            cp "$www" /root/www.conf
+            fails() {
+              if bash /root/php-check > /root/out 2>&1; then echo "PHP check passed with $1"; exit 1; fi
+              grep -qF "$2" /root/out || { cat /root/out; echo "PHP check failed on another line with $1"; exit 1; }
+              cp /root/www.conf "$www"
+              rm -f "/etc/php/$v/fpm/conf.d/99-zzz.ini"
+            }
+            sed -i "s/^pm = .*/pm = dynamic/" "$www"; fails "pm dynamic" "not pm = ondemand"
+            sed -i "s/^pm.max_children = .*/pm.max_children = 5/" "$www"; fails "5 workers" "not pm.max_children = 2"
+            sed -i "s/^listen.owner = .*/listen.owner = www-data/" "$www"; fails "owner www-data" "not listen.owner = root"
+            sed -i "s/^listen.group = .*/listen.group = www-data/" "$www"; fails "group www-data" "not listen.group = root"
+            sed -i "s/^listen.mode = .*/listen.mode = 0660/" "$www"; fails "mode 0660" "not listen.mode = 0600"
+            echo "expose_php = On" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"; fails "expose_php on" "expose_php is not off"
+            echo "session.upload_progress.enabled = 1" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"
+            fails "upload progress on" "session.upload_progress.enabled is not off"
+            bash /root/php-check'
+
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without
       # ssl_reject_handshake, with a certificate in it, or with the old key or certificate back.

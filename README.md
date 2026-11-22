@@ -26,7 +26,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times |
 | 0 | `first-boot/00-helper-download.sh` | Downloads eeploi-helper and checks its signature and SHA-256 |
 | 1 | `ubuntu-26.04/01-packages.sh` | nginx, PHP, Node, Redis, Supervisor, the database, Composer and a pinned npm, without Ubuntu's `globalignorefile` and its update notice |
-| 2 | `stack/02-deploy-user.sh` | The deploy user, with eeploi's key only; cron and at for root and that user only |
+| 2 | `stack/02-deploy-user.sh` | The deploy user, with eeploi's key only; cron and at for root and that user only; PHP-FPM's stock `[www]` pool closed (on demand, two workers, a socket only root may open), no `X-Powered-By` header, no session upload progress |
 | 3 | `stack/03-sudo.sh` | eeploi-helper and its one sudo rule |
 | 4 | `stack/04-ssh.sh` | SSH on its own port, keys only, no root login, three tries, no forwarding but local (`ssh -L`, TCP and Unix sockets), Diffie-Hellman groups of 3072 bits and up (in `/etc/ssh/eeploi-moduli`), no NIST curves or SHA-1 offered, host keys ed25519 and RSA |
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
