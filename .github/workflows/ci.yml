@@ -277,14 +277,18 @@ jobs:
       # that sends redirects, with Ubuntu's origins added to ours (no #clear; with it, an origin
       # pattern in an earlier file is cleared), without the conffile options, with ctrl-alt-del.target
       # unmasked (step 7 masks it again), with CtrlAltDelBurstAction back at reboot-force (in the
-      # file, then running too), and without its apt lines: every line of a check counts, not only the last.
+      # file, then running too), and without its apt lines: every line of a check counts, not only
+      # the last. getty.target is masked in the image: the container sees the runner's /dev/tty1,
+      # where getty@tty1 exits at once and is restarted until systemd's start limit leaves it
+      # failed, during whichever step runs then. A container has no console to log in on.
       - name: always steps, twice, then their checks
         run: |
           docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
           ARG UBUNTU_IMAGE
           FROM $UBUNTU_IMAGE
           RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
-                fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl && useradd -m deploy
+                fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl && useradd -m deploy \
+            && systemctl mask getty.target
           CMD ["/sbin/init"]
           DOCKERFILE
           docker run -d --name twice --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \
