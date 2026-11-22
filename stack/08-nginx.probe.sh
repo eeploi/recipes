@@ -14,8 +14,8 @@ http_safe=(server_tokens fastcgi_buffer_size fastcgi_buffers real_ip_header set_
 command -v nginx > /dev/null || exit 0
 # D-17: nginx -T reads the config on disk, not the running nginx.
 config=$(nginx -T 2> /dev/null)
-# nginx reader, begin. D-28: the same bytes in stack/08-nginx.probe.sh and stack/08-nginx.check.sh,
-# from this line to its end line (bin/check-layout.sh).
+# nginx reader, begin. D-28: the same bytes in every file that holds it, from this line to its
+# end line (bin/check-layout.sh).
 # nginx_read DIRECTIVE...: reads nginx -T on stdin as nginx reads it (ngx_conf_read_token): a word
 # starts at a character that is not a space, and a quote, # or { } ; is special only where a word
 # starts. Inside a word they are plain, so a}#" is one word; a quoted string is one word; \ takes

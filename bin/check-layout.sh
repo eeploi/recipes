@@ -81,18 +81,21 @@ while IFS= read -r file; do
   case "$listed" in *" $file "*) ;; *) bad "$file" "is in no list of probes" ;; esac
 done < <(find first-boot stack ubuntu-* -name '*.probe.sh' | LC_ALL=C sort)
 
-# D-28: the nginx reader is the same bytes in each file that holds a copy, from its begin line to
-# its end line, each once.
+# D-28: the nginx reader is the same bytes in every file that holds a copy, from its begin line
+# to its end line, each once; at least two files hold one.
 reader() { awk '/^# nginx reader, begin\./ { n++; on = 1 } on { print } /^# nginx reader, end\./ { on = 0; e++ }
   END { if (n != 1 || e != 1 || on) exit 1 }' "$1"; }
-nginx_readers='stack/08-nginx.probe.sh stack/08-nginx.check.sh'
-first_reader=
-for file in $nginx_readers; do
-  copy=$(reader "$file") || { bad "$file" "has no nginx reader, or more than one"; continue; }
-  if [ -z "$first_reader" ]; then first_reader=$copy first_file=$file
-  elif [ "$copy" != "$first_reader" ]; then bad "$file" "its nginx reader differs from the one in $first_file"
-  fi
-done
+readers=()
+while IFS= read -r file; do readers+=("$file"); done < <(grep -rlE --include='*.sh' '^# nginx reader, begin\.' first-boot stack ubuntu-* | LC_ALL=C sort)
+if [ "${#readers[@]}" -lt 2 ]; then
+  bad D-28 "the nginx reader is in ${#readers[@]} files, not in the check and the probe"
+else
+  first=$(reader "${readers[0]}") || bad "${readers[0]}" "has more than one nginx reader, or no end line"
+  for file in "${readers[@]:1}"; do
+    copy=$(reader "$file") || { bad "$file" "has more than one nginx reader, or no end line"; continue; }
+    [ "$copy" = "$first" ] || bad "$file" "its nginx reader differs from the one in ${readers[0]}"
+  done
+fi
 
 # Each line in markers: a known marker, a step that a list of steps runs, and known flags.
 # shellcheck disable=SC2094 # bad() only prints

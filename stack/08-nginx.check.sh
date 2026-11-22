@@ -14,8 +14,8 @@ fi
 # and no file nginx reads turns it on again, in any block. nginx takes on, build and any case
 # (ngx_strcasecmp), so anything but off fails. D-27: the line is in Ubuntu's nginx.conf, which an
 # nginx update keeps.
-# nginx reader, begin. D-28: the same bytes in stack/08-nginx.probe.sh and stack/08-nginx.check.sh,
-# from this line to its end line (bin/check-layout.sh).
+# nginx reader, begin. D-28: the same bytes in every file that holds it, from this line to its
+# end line (bin/check-layout.sh).
 # nginx_read DIRECTIVE...: reads nginx -T on stdin as nginx reads it (ngx_conf_read_token): a word
 # starts at a character that is not a space, and a quote, # or { } ; is special only where a word
 # starts. Inside a word they are plain, so a}#" is one word; a quoted string is one word; \ takes
@@ -114,15 +114,17 @@ nginx_read() {
   }'
 }
 # nginx reader, end.
-# D-11: nginx -T reads the config on disk.
-config=$(nginx -T 2> /dev/null) || { echo 'nginx refuses its config' >&2; exit 1; }
-tokens=$(nginx_read server_tokens <<< "$config" | tr '[:upper:]' '[:lower:]') ||
-  { echo 'nginx -T could not be read as nginx reads it' >&2; exit 1; }
+# nginx accepts its config: nginx -T tests it before it prints it. When it doesn't, nginx -t says
+# why. D-11: nginx -T reads the config on disk.
+config=$(nginx -T 2> /dev/null) || { echo 'nginx refuses its config' >&2; nginx -t || true; exit 1; }
+tokens=$(nginx_read server_tokens <<< "$config") || { echo 'nginx -T could not be read as nginx reads it' >&2; exit 1; }
+# Exit 2: no off in http {} of nginx.conf; 3: a value but off.
+rc=0
 # shellcheck disable=SC2016 # awk's $
-awk '$1 == "file" { f = substr($0, 6); next } f == "/etc/nginx/nginx.conf" && $0 == "http server_tokens off" { ok = 1 }
-  END { exit !ok }' <<< "$tokens" || { echo 'nginx.conf does not turn server_tokens off' >&2; exit 1; }
-if grep -E '^(http|server [0-9]+|other) server_tokens ' <<< "$tokens" | grep -qvE '^[a-z]+( [0-9]+)? server_tokens off$'; then
-  echo 'nginx turns server_tokens on again' >&2; exit 1
-fi
-# nginx accepts its config. D-11: nginx -t reads the config on disk.
-nginx -t
+awk 'NF == 0 || $3 == "file" { next } $1 == "file" { f = substr($0, 6); next }
+  { v = tolower($0); sub(/^[a-z]+( [0-9]+)? server_tokens /, "", v) }
+  v != "off" { on = 1 } f == "/etc/nginx/nginx.conf" && $1 == "http" && v == "off" { ok = 1 }
+  END { exit (!ok ? 2 : (on ? 3 : 0)) }' <<< "$tokens" || rc=$?
+[ "$rc" != 2 ] || { echo 'nginx.conf does not turn server_tokens off' >&2; exit 1; }
+[ "$rc" != 3 ] || { echo 'nginx turns server_tokens on again' >&2; exit 1; }
+[ "$rc" = 0 ]

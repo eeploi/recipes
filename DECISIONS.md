@@ -103,7 +103,7 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** known limit
 - **Decided:** 2026-11-21, PR #35
-- **What:** `sshd -T` and `nginx -t` read the config files, not what the running daemon loaded. A change that isn't reloaded yet passes the check.
+- **What:** `sshd -T`, `nginx -t` and `nginx -T` read the config files, not what the running daemon loaded. A change that isn't reloaded yet passes the check.
 - **Why:** neither daemon reports its running config. The steps reload or restart after a change, and a first boot ends with step 10, which starts the services.
 - **Where:** `stack/04-ssh.check.sh`, `stack/08-nginx.check.sh`
 
@@ -243,7 +243,7 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** decision
 - **Decided:** 2026-11-22, #74
-- **What:** step 8's check and the nginx probe read `nginx -T` with the same reader, `nginx_read`, as nginx reads it. Each file holds its own copy, from `# nginx reader, begin.` to `# nginx reader, end.`, and `bin/check-layout.sh` fails when the two copies differ in any byte. The next check or probe that reads nginx's config copies it the same way and is added there.
+- **What:** step 8's check and the nginx probe read `nginx -T` with the same reader, `nginx_read`, as nginx reads it. Each file holds its own copy, from `# nginx reader, begin.` to `# nginx reader, end.`, and `bin/check-layout.sh` finds every copy by that line and fails when two differ in any byte. The next check or probe that reads nginx's config copies it the same way.
 - **Why:** a check and a probe ship as they are and run on their own, so neither can include a file or call the other. Two readers of one config drift apart; a rough one passes a `server_tokens on;` split over lines or behind a `#` inside a quoted value.
 - **Accepted:** a change to the reader is made in both files. A directive at the top of a file nginx includes is taken as an http one, also when the file is included inside a server block, such as a snippet.
 - **Where:** `stack/08-nginx.check.sh`, `stack/08-nginx.probe.sh`, `bin/check-layout.sh`
