@@ -9,6 +9,8 @@ passwd -l root
 mkdir -p /etc/eeploi
 chown root:root /etc/eeploi
 chmod 755 /etc/eeploi
-echo '# Written by step 0 of the eeploi recipes once root'\''s password was locked.' > /etc/eeploi/root-locked
-chown root:root /etc/eeploi/root-locked
-chmod 644 /etc/eeploi/root-locked
+ROOT_LOCKED_TMP=$(mktemp /etc/eeploi/.root-locked.XXXXXX)
+echo '# Written by step 0 of the eeploi recipes once root'\''s password was locked.' > "$ROOT_LOCKED_TMP"
+chown root:root "$ROOT_LOCKED_TMP"
+chmod 644 "$ROOT_LOCKED_TMP"
+mv -f "$ROOT_LOCKED_TMP" /etc/eeploi/root-locked
