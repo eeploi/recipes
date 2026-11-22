@@ -82,4 +82,13 @@ Suites: {codename}
 Components: main
 Signed-By: /etc/apt/keyrings/sury-php.asc
 SOURCES
-apt-get update -q
+# While packages.sury.org syncs its mirrors, an index can have the wrong size for a while. apt-get
+# update tries again every 60 s, ten times (about ten minutes), then stops the step with a message
+# that is the last line of its output, the line a first boot reports. No fallback to Ubuntu's PHP:
+# the server gets the PHP version chosen.
+SURY_TRIES=1
+until apt-get update -q; do
+  [ "$SURY_TRIES" -le 10 ] || { echo 'The PHP source is updating; try again later.' >&2; exit 1; }
+  SURY_TRIES=$((SURY_TRIES + 1))
+  sleep 60
+done

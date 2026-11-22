@@ -37,7 +37,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 10 | `stack/10-start.sh` | Starts the services, checks SSH listens on IPv4 |
 | 11 | `first-boot/11-report.sh` | Sends the host keys to eeploi, every 30 seconds until eeploi takes or refuses them |
 
-`php-source.sh` adds packages.sury.org/php (Ondřej Surý) as a fixed source for another PHP than Ubuntu's own (8.3 and 8.4 on 26.04), with its signing key (15058500A0235D97F5D10063B188E2B695BD4743) pinned, and removes the Launchpad PPA, which has no builds for 26.04.
+`php-source.sh` adds packages.sury.org/php (Ondřej Surý) as a fixed source for another PHP than Ubuntu's own (8.3 and 8.4 on 26.04), with its signing key (15058500A0235D97F5D10063B188E2B695BD4743) pinned, and removes the Launchpad PPA, which has no builds for 26.04. When `apt-get update` fails, as while packages.sury.org syncs its mirrors, it tries again every 60 seconds for about ten minutes, then stops step 1 with "The PHP source is updating; try again later."
 
 `stack/start.sh`, `first-boot/start.sh` and `stack/values.sh` are no steps: they set the shell options, the reports to eeploi and the values. Nor is `stack/fingerprint.sh` (Fingerprint), which is not part of a server's script.
 
