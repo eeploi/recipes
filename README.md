@@ -32,7 +32,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 5 | `stack/05-firewall.sh` | UFW: SSH, and HTTPS from Cloudflare only |
 | 6 | `stack/06-fail2ban.sh` | fail2ban for SSH, taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, services restarted after one, SCTP kernel module blocked |
-| 8 | `stack/08-nginx.sh` | Real visitor IPs, a catch-all for unknown hosts |
+| 8 | `stack/08-nginx.sh` | Real visitor IPs, a catch-all that refuses the TLS handshake for unknown hosts |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |
 | 10 | `stack/10-start.sh` | Starts the services, checks SSH listens on IPv4 |
 | 11 | `first-boot/11-report.sh` | Sends the host keys to eeploi, every 30 seconds until eeploi takes or refuses them |
@@ -80,6 +80,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   `recipe-run` on a release built in CI ends `result ok` twice, the second time with every step the same, and fails when a check fails.
   npm, as the deploy user runs it, prints no warning and no update notice.
   The settings SSH runs with, after every drop-in, are step 4's.
+  nginx refuses the TLS handshake for an unknown host.
   The deploy user logs in with OpenSSH's client and a key, as eeploi does, and gets the ed25519 host key.
   ssh-audit reports on SSH's crypto, a report only.
   The PHP source's pinned key is the one apt checks it with.
