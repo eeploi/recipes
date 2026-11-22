@@ -1,10 +1,35 @@
-# 7. Security updates only, services restarted after one, SCTP, RDS and TIPC blocked, no ICMP
-# redirects, martians logged
+# 7. Security updates only (and sury.org's PHP), services restarted after one, SCTP, RDS and TIPC
+# blocked, no ICMP redirects, martians logged
 STEP='7. Updates and kernel hardening'
-cat > /etc/apt/apt.conf.d/52eeploi-unattended <<'APT'
-Unattended-Upgrade::Allowed-Origins { "${distro_id}:${distro_codename}-security"; };
+# apt.conf lists add up: #clear empties Ubuntu's list of origins (50unattended-upgrades, which has the
+# release pocket in it too) and any origin pattern, so security updates only is what is set: Ubuntu's
+# security pocket and Ubuntu Pro's two security pockets (ESM), which do nothing on a server without
+# Pro and bring universe's security fixes on one with it.
+# A PHP from packages.sury.org (another PHP than Ubuntu's, php-source.sh) gets its updates too: a
+# deliberate exception to security updates only. sury.org has no security channel of its own, and
+# PHP's security fixes only come as point releases. A server with Ubuntu's PHP doesn't get it.
+{
+  cat <<'APT'
+#clear Unattended-Upgrade::Allowed-Origins;
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Allowed-Origins {
+  "${distro_id}:${distro_codename}-security";
+  "${distro_id}ESMApps:${distro_codename}-apps-security";
+  "${distro_id}ESM:${distro_codename}-infra-security";
+};
 Unattended-Upgrade::Automatic-Reboot "false";
 APT
+  if [ -f /etc/apt/sources.list.d/sury-php.sources ]; then
+    cat <<'APT'
+Unattended-Upgrade::Allowed-Origins { "deb.sury.org:${distro_codename}"; };
+APT
+  fi
+} > /etc/apt/apt.conf.d/52eeploi-unattended
+# A package update keeps a config file eeploi changed (www.conf, for one) and takes the package's new
+# one where nobody changed it. Without this, unattended-upgrades holds such a package back, its
+# security fixes too, and apt-get in a later step would ask. It holds for every apt run, by hand too;
+# a fix Ubuntu makes in a file eeploi changed is not taken.
+printf 'Dpkg::Options { "--force-confdef"; "--force-confold"; };\n' > /etc/apt/apt.conf.d/52eeploi-conffiles
 printf 'APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 ' > /etc/apt/apt.conf.d/20auto-upgrades

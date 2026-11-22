@@ -268,8 +268,9 @@ jobs:
       # clean environment. A step whose second run changes /etc fails. The host's kernel modules are mounted
       # read-only, so modprobe reads a real kernel's. A step that leaves a unit failed fails, and
       # the services still run after all of them. Then 07's check must fail with one interface
-      # that sends redirects, and without its apt lines: every line of a check counts, not only the
-      # last.
+      # that sends redirects, with Ubuntu's origins added to ours (no #clear; with it, an origin
+      # pattern in an earlier file is cleared), without the conffile options, and without its apt
+      # lines: every line of a check counts, not only the last.
       - name: always steps, twice, then their checks
         run: |
           docker build --build-arg UBUNTU_IMAGE -t twice - <<'DOCKERFILE'
@@ -291,6 +292,19 @@ jobs:
             if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with lo sending redirects"; exit 1; fi
             grep -qxF "/proc/sys/net/ipv4/conf/lo/send_redirects is not 0" /tmp/out-07
             echo 0 > /proc/sys/net/ipv4/conf/lo/send_redirects
+            bash /tmp/check-07
+            cp /etc/apt/apt.conf.d/52eeploi-unattended /tmp/52eeploi-unattended
+            echo "Unattended-Upgrade::Origins-Pattern { \"origin=*\"; };" > /etc/apt/apt.conf.d/51zzz
+            bash /tmp/check-07
+            sed -i "/^#clear/d" /etc/apt/apt.conf.d/52eeploi-unattended
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed with the Ubuntu origins added up"; exit 1; fi
+            grep -qxF "unattended-upgrades: not the origins eeploi sets" /tmp/out-07
+            rm /etc/apt/apt.conf.d/51zzz
+            cp /tmp/52eeploi-unattended /etc/apt/apt.conf.d/52eeploi-unattended
+            rm /etc/apt/apt.conf.d/52eeploi-conffiles
+            if bash /tmp/check-07 2> /tmp/out-07; then echo "07 check passed without confold"; exit 1; fi
+            grep -qxF "dpkg: not --force-confdef" /tmp/out-07
+            bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash /tmp/check-07'
@@ -596,6 +610,22 @@ jobs:
             echo "expose_php = On" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"; fails "expose_php on" "expose_php is not off"
             echo "session.upload_progress.enabled = 1" > "/etc/php/$v/fpm/conf.d/99-zzz.ini"; fails "upload progress on" "upload_progress.enabled is not off"
             bash /root/php-check'
+
+      # With a PHP from packages.sury.org, unattended-upgrades allows that source by the name apt
+      # knows it by (its Release's origin and suite); with Ubuntu's PHP it doesn't. Its own list, from
+      # a dry run.
+      - name: server, the PHP source in unattended-upgrades
+        run: |
+          docker exec server bash -euc '
+            sury="o=deb.sury.org,a=$(. /etc/os-release && echo "$VERSION_CODENAME")"
+            allowed=$({ unattended-upgrade --dry-run --debug 2>&1 || true; } | grep "Allowed origins are:")
+            echo "$allowed"
+            if [ -f /etc/apt/sources.list.d/sury-php.sources ]; then
+              apt-cache policy | grep -F "$sury," > /dev/null
+              grep -F "$sury" <<< "$allowed" > /dev/null
+            else
+              ! grep -F deb.sury.org <<< "$allowed"
+            fi'
 
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without
