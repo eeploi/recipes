@@ -862,8 +862,9 @@ jobs:
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without
       # ssl_reject_handshake, with a certificate in it, or with the old key or certificate back; with
-      # Ubuntu's server_tokens line back in nginx.conf, or a server block that turns it on again (in
-      # any case), not with one in a comment.
+      # Ubuntu's server_tokens line back in nginx.conf, with server_tokens off only in a server block,
+      # or a block that turns it on again (in any case, over two lines, after a # in a quoted value,
+      # in a location), not with one in a comment.
       # The real IP check fails without the header line, without a range, or with a line nginx refuses.
       - name: server, the nginx catch-all
         run: |
@@ -895,6 +896,12 @@ jobs:
             t=/etc/nginx/conf.d/tokens.conf
             printf "server {\n    listen 8099;\n    server_tokens on;\n}\n" > "$t"; fails "a server block with server_tokens on" "turns server_tokens on again"
             printf "server {\n    listen 8099;\n    server_tokens BUILD;\n}\n" > "$t"; fails "server_tokens BUILD" "turns server_tokens on again"
+            printf "server {\n    listen 8099;\n    server_tokens\n        on;\n}\n" > "$t"; fails "server_tokens on over two lines" "turns server_tokens on again"
+            printf "server {\n    listen 8099;\n    add_header X-A \"a # b\"; server_tokens on;\n}\n" > "$t"
+            fails "server_tokens on after a # in a quoted value" "turns server_tokens on again"
+            printf "server {\n    listen 8099;\n    location / { server_tokens build; }\n}\n" > "$t"; fails "a location with server_tokens build" "turns server_tokens on again"
+            sed -i "/server_tokens/d" "$n"; printf "server {\n    listen 8099;\n    server_tokens off;\n}\n" > "$t"
+            fails "server_tokens off only in a server block" "nginx.conf does not turn server_tokens off"
             printf "# server_tokens on;\n" > "$t"; bash /root/nginx-check; rm "$t"
             bash /root/nginx-check
             bin/render.sh --check stack/08-real-ip.sh > /root/real-ip-check

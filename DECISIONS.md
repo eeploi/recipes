@@ -238,3 +238,12 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Why:** Ubuntu's `nginx.conf` sets `server_tokens build` in `http {}`, and nginx refuses a second `server_tokens` there, so a file of eeploi's own in `conf.d` can't turn it off.
 - **Where:** `stack/08-nginx.sh`, `stack/08-nginx.check.sh`, `stack/08-nginx.probe.sh`
 
+
+## D-28: One nginx reader, copied into the check and the probe
+
+- **Kind:** decision
+- **Decided:** 2026-11-22, #74
+- **What:** step 8's check and the nginx probe read `nginx -T` with the same reader, `nginx_read`, as nginx reads it. Each file holds its own copy, from `# nginx reader, begin.` to `# nginx reader, end.`, and `bin/check-layout.sh` fails when the two copies differ in any byte. The next check or probe that reads nginx's config copies it the same way and is added there.
+- **Why:** a check and a probe ship as they are and run on their own, so neither can include a file or call the other. Two readers of one config drift apart; a rough one passes a `server_tokens on;` split over lines or behind a `#` inside a quoted value.
+- **Accepted:** a change to the reader is made in both files. A directive at the top of a file nginx includes is taken as an http one, also when the file is included inside a server block, such as a snippet.
+- **Where:** `stack/08-nginx.check.sh`, `stack/08-nginx.probe.sh`, `bin/check-layout.sh`

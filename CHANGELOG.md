@@ -8,7 +8,7 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 ### Changed
 
-- Step 8 turns nginx's `server_tokens` off in `/etc/nginx/nginx.conf` (Ubuntu's file sets `build`), so no nginx version or build name shows in the `Server` header or on error pages; its check fails when nginx.conf doesn't turn it off or any file nginx reads turns it on again. D-27: an nginx update keeps the changed `nginx.conf` (#72).
+- Step 8 turns nginx's `server_tokens` off in `/etc/nginx/nginx.conf` (Ubuntu's file sets `build`), so no nginx version or build name shows in the `Server` header or on error pages; its check fails when nginx.conf doesn't turn it off in `http {}` or any file nginx reads turns it on again, read as nginx reads it (#74). D-27: an nginx update keeps the changed `nginx.conf` (#72).
 
 ### Added
 

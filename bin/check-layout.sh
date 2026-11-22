@@ -3,8 +3,9 @@
 # link, and every step in it sets STEP=, has its .check.sh next to it, has one marker in markers
 # and is in the README table.
 # An always step holds only the values the helper fills (bin/render.sh --step). Each list of steps
-# has a list of probes, whose probes are named, listed and in PROBES.md as below. Every D-n a
-# comment names is an entry in DECISIONS.md, numbered in order.
+# has a list of probes, whose probes are named, listed and in PROBES.md as below. D-28: the
+# copies of the nginx reader are the same. Every D-n a comment names is an entry in DECISIONS.md,
+# numbered in order.
 set -uo pipefail
 export LC_ALL=C # the path rule below matches ASCII only, as the helper's
 cd "$(dirname "$0")/.." || exit 1
@@ -79,6 +80,19 @@ done
 while IFS= read -r file; do
   case "$listed" in *" $file "*) ;; *) bad "$file" "is in no list of probes" ;; esac
 done < <(find first-boot stack ubuntu-* -name '*.probe.sh' | LC_ALL=C sort)
+
+# D-28: the nginx reader is the same bytes in each file that holds a copy, from its begin line to
+# its end line, each once.
+reader() { awk '/^# nginx reader, begin\./ { n++; on = 1 } on { print } /^# nginx reader, end\./ { on = 0; e++ }
+  END { if (n != 1 || e != 1 || on) exit 1 }' "$1"; }
+nginx_readers='stack/08-nginx.probe.sh stack/08-nginx.check.sh'
+first_reader=
+for file in $nginx_readers; do
+  copy=$(reader "$file") || { bad "$file" "has no nginx reader, or more than one"; continue; }
+  if [ -z "$first_reader" ]; then first_reader=$copy first_file=$file
+  elif [ "$copy" != "$first_reader" ]; then bad "$file" "its nginx reader differs from the one in $first_file"
+  fi
+done
 
 # Each line in markers: a known marker, a step that a list of steps runs, and known flags.
 # shellcheck disable=SC2094 # bad() only prints
