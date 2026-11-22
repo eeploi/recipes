@@ -5,8 +5,8 @@ command -v needrestart >/dev/null
 grep -rqs "^\$nrconf{restart} = 'a';" /etc/needrestart/conf.d/
 # SCTP, RDS and TIPC can't be loaded, and are not loaded. If one can't be unloaded, a reboot does.
 for module in sctp rds tipc; do
-  modprobe -n -v "$module" | grep 'install /bin/false' >/dev/null
-  [ ! -d "/sys/module/$module" ]
+  modprobe -n -v "$module" | grep 'install /bin/false' >/dev/null || { echo "$module can be loaded" >&2; exit 1; }
+  [ ! -d "/sys/module/$module" ] || { echo "$module is loaded" >&2; exit 1; }
 done
 # The settings come back at boot: the file has each line.
 for setting in 'net.ipv4.conf.*.accept_redirects = 0' 'net.ipv6.conf.*.accept_redirects = 0' \
