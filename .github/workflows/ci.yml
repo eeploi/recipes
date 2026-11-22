@@ -575,7 +575,7 @@ jobs:
       - name: server, the PHP check
         run: |
           docker exec server bash -euc '
-            v=$(. /etc/eeploi/recipes.conf && echo "$PHP")
+            v=$(sed -n "s/^PHP=//p" /etc/eeploi/recipes.conf)
             [ "$(stat -c "%U:%G %a" "/run/php/php$v-fpm.sock")" = "root:root 600" ]
             bin/render.sh --check stack/02-deploy-user.sh > /root/php-check
             bash /root/php-check
