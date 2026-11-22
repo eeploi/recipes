@@ -91,7 +91,8 @@ SOURCES
 SURY_UNTIL=$(($(date +%s) + 600))
 until SURY_OUT=$(apt-get update -q -o Dir::Etc::SourceList=/etc/apt/sources.list.d/sury-php.sources \
   -o Dir::Etc::SourceParts=- -o APT::Get::List-Cleanup=0 2>&1); do
-  printf '%s\n' "$SURY_OUT"
+  # On stderr, as the line after it, so the two reach the first boot's output in this order.
+  printf '%s\n' "$SURY_OUT" >&2
   grep -qE 'File has unexpected size|Hash Sum mismatch' <<< "$SURY_OUT" || { grep -m 1 '^E: ' <<< "$SURY_OUT" >&2 || true; exit 1; }
   [ "$(date +%s)" -lt "$SURY_UNTIL" ] || { echo 'The PHP source is updating; try again later.' >&2; exit 1; }
   sleep 60

@@ -61,7 +61,7 @@ fails() {
   echo "ok $6"
 }
 
-run 3 1 "$sync" > /dev/null
+if ! out=$(run 3 1 "$sync"); then echo "$out"; echo 'sync errors that clear: php-source.sh failed'; exit 1; fi
 expect 4 3 'sync errors that clear'
 echo 'ok sync errors that clear'
 fails 99 1 "$sync" 11 10 'sync errors that last' 'The PHP source is updating; try again later.'
