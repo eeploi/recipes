@@ -368,6 +368,53 @@ jobs:
             bash <(bin/render.sh --check stack/06-fail2ban.sh)
             systemctl is-active fail2ban'
 
+      # Step 8 with another nginx file broken: the step fails and leaves /etc as it was, the default
+      # site and a changed catch-all included, and nginx running. A copy left aside by a run that was
+      # cut off is what comes back. When nginx doesn't reload, the config comes back too. Then, with
+      # the broken file gone, the step and its check pass again; the check fails with a copy left.
+      - name: nginx, a refused config
+        run: |
+          docker exec twice bash -euc '
+            bin/render.sh --step stack/08-nginx.sh > /tmp/step
+            bin/render.sh --check stack/08-nginx.sh > /tmp/check-08
+            refused() {
+              bin/etc-state.sh > /tmp/etc.before
+              if bash /tmp/step 2> /tmp/out-08; then echo "step 8 passed with $1"; exit 1; fi
+              grep -qxF "$2" /tmp/out-08 || { cat /tmp/out-08; echo "step 8 failed otherwise with $1"; exit 1; }
+              bin/etc-state.sh > /tmp/etc.after
+              diff /tmp/etc.before /tmp/etc.after
+              systemctl is-active nginx
+            }
+            f=/etc/nginx/sites-available/catch-all
+            echo "not nginx" > /etc/nginx/conf.d/broken.conf
+            echo "# changed" >> $f
+            ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+            refused "a broken file" "nginx refuses its config, it is as it was"
+            rm /etc/nginx/sites-enabled/default
+            mkdir -p /etc/nginx/eeploi.prev/etc/nginx/sites-available
+            echo "# old" > /etc/nginx/eeploi.prev/etc/nginx/sites-available/catch-all
+            if bash /tmp/step; then echo "step 8 passed with a broken file"; exit 1; fi
+            [ "$(cat $f)" = "# old" ]
+            [ ! -e /etc/nginx/sites-enabled/catch-all ]
+            [ ! -e /etc/nginx/eeploi.prev ]
+            rm /etc/nginx/conf.d/broken.conf
+            bash /tmp/step
+            mkdir -p /etc/systemd/system/nginx.service.d
+            printf "[Service]\nExecReload=\nExecReload=/bin/false\n" > /etc/systemd/system/nginx.service.d/reload.conf
+            systemctl daemon-reload
+            echo "# changed" >> $f
+            refused "a failed reload" "nginx did not reload, its config is as it was"
+            rm -r /etc/systemd/system/nginx.service.d
+            systemctl daemon-reload
+            bash /tmp/step
+            bash /tmp/check-08
+            mkdir /etc/nginx/eeploi.prev
+            if bash /tmp/check-08 2> /tmp/out-08; then echo "08 check passed with a copy left aside"; exit 1; fi
+            grep -qxF "an old nginx config is left aside (/etc/nginx/eeploi.prev)" /tmp/out-08
+            rmdir /etc/nginx/eeploi.prev
+            bash /tmp/check-08
+            systemctl is-active nginx'
+
       # The checks of steps 6 and 9 fail on their new lines: another SSH port in the jail, a jail
       # file without growing bans, the recidive jail or its values, another user in the log path or
       # the su line. Then each step writes its file again and its check passes.
@@ -686,6 +733,7 @@ jobs:
       # An unknown host gets no TLS handshake from nginx, and no certificate. Step 8's check fails,
       # with its own message, with the catch-all off, not the default server, without
       # ssl_reject_handshake, with a certificate in it, or with the old key or certificate back.
+      # The real IP check fails without the header line, without a range, or with a line nginx refuses.
       - name: server, the nginx catch-all
         run: |
           docker exec server bash -euc '
@@ -695,10 +743,12 @@ jobs:
             bash /root/nginx-check
             f=/etc/nginx/sites-available/catch-all
             cp "$f" /root/catch-all
+            # The check in $check fails with $1, saying $2; then $saved goes back to $target.
+            check=/root/nginx-check saved=/root/catch-all target=$f
             fails() {
-              if bash /root/nginx-check > /root/out 2>&1; then echo "nginx check passed with $1"; exit 1; fi
-              grep -qF "$2" /root/out || { cat /root/out; echo "nginx check failed on another line with $1"; exit 1; }
-              cp /root/catch-all "$f"
+              if bash "$check" > /root/out 2>&1; then echo "$check passed with $1"; exit 1; fi
+              grep -qF "$2" /root/out || { cat /root/out; echo "$check failed on another line with $1"; exit 1; }
+              cp "$saved" "$target"
             }
             rm /etc/nginx/sites-enabled/catch-all; fails "the catch-all off" "the catch-all is off"; ln -s "$f" /etc/nginx/sites-enabled/catch-all
             sed -i "s/^    listen 443 ssl default_server;/    listen 443 ssl;/" "$f"; fails "no IPv4 default" "not the IPv4 default"
@@ -707,7 +757,17 @@ jobs:
             sed -i "s|ssl_reject_handshake on;|&\n    ssl_certificate /etc/nginx/ssl/x.crt;|" "$f"; fails "a certificate" "still has a certificate"
             touch /etc/nginx/ssl/catch-all.key; fails "the old key" "still has a certificate"; rm /etc/nginx/ssl/catch-all.key
             touch /etc/nginx/ssl/catch-all.crt; fails "the old certificate" "still has a certificate"; rm /etc/nginx/ssl/catch-all.crt
-            bash /root/nginx-check'
+            bash /root/nginx-check
+            bin/render.sh --check stack/08-real-ip.sh > /root/real-ip-check
+            bash /root/real-ip-check
+            c=/etc/nginx/conf.d/cloudflare.conf
+            cp "$c" /root/cloudflare.conf
+            check=/root/real-ip-check saved=/root/cloudflare.conf target=$c
+            sed -i "/^real_ip_header/d" "$c"; fails "no header" "cloudflare.conf: not real_ip_header CF-Connecting-IP"
+            sed -i "/^set_real_ip_from/d" "$c"; fails "no ranges" "cloudflare.conf: no set_real_ip_from"
+            echo "set_real_ip_from 192.0.2.0/24;" > "$c"; echo "real_ip_header CF-Connecting-IP;" >> "$c"; echo "set_real_ip_from x" >> "$c"
+            fails "a range nginx refuses" "test failed"
+            bash /root/real-ip-check'
 
       # The deploy user logs in with OpenSSH's own client, as eeploi does, with its ed25519 key: the
       # host keys offered are ed25519 and RSA only, and the ECDSA key file is still there.
