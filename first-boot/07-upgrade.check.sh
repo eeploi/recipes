@@ -1,4 +1,3 @@
-# The first boot installed every update waiting: step 7's record is there, root's.
-record=/etc/eeploi/updated
-[ -f "$record" ] && [ ! -L "$record" ] && [ "$(stat -c %U:%G "$record")" = root:root ] \
+# The first boot installed every update waiting: its record is there, root's.
+[ "$(stat -c '%F %U:%G' /etc/eeploi/updated)" = 'regular file root:root' ] \
   || { echo 'the first boot installed no updates' >&2; exit 1; }
