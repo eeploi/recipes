@@ -328,7 +328,7 @@ jobs:
       # file, then running too), with ufw's own sysctl file as Ubuntu ships it (D-30: martians off): applied
       # after systemd-sysctl as at boot, then on disk only; step 7 changes only its two lines, and
       # then the boot order leaves martians logged. Also with a second line for a key at 0, or none
-      # at all. And without its apt lines: every line of a check counts, not only
+      # at all and no newline at the end of the file (the last line stays as it was). And without its apt lines: every line of a check counts, not only
       # the last. getty.target is masked in the image: the container sees the runner's /dev/tty1,
       # where getty@tty1 exits at once and is restarted until systemd's start limit leaves it
       # failed, during whichever step runs then. A container has no console to log in on.
@@ -398,9 +398,12 @@ jobs:
             echo "$default = 0" >> "$ufw"
             fails_07 "a second line at 0" "/etc/ufw/sysctl.conf: not $default=1"
             sed -i "\|^$default|d" "$ufw"
-            fails_07 "no line" "/etc/ufw/sysctl.conf: not $default=1"
+            truncate -s -1 "$ufw"
+            last=$(tail -n 1 "$ufw")
+            fails_07 "no line, and no newline at the end" "/etc/ufw/sysctl.conf: not $default=1"
             bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
+            grep -qxF "$last" "$ufw"
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash /tmp/check-07'
 

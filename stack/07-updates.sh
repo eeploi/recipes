@@ -60,9 +60,9 @@ SYSCTL
 /usr/lib/systemd/systemd-sysctl /etc/sysctl.d/60-eeploi-network.conf
 # D-30: UFW applies its own sysctl file at boot, after systemd-sysctl, and Ubuntu's turns martian
 # logging off again: its two lines say 1 too, every other line stays. A ufw update keeps the file
-# (--force-confold).
+# (--force-confold). A last line without a newline gets one, so a line added after it stands alone.
 for key in net/ipv4/conf/{all,default}/log_martians; do
-  sed -i -E "s|^[[:space:]]*${key}[[:space:]]*=.*|$key=1|" /etc/ufw/sysctl.conf
+  sed -i -E -e "s|^[[:space:]]*${key}[[:space:]]*=.*|$key=1|" -e "\$a\\" /etc/ufw/sysctl.conf
   grep -qxF "$key=1" /etc/ufw/sysctl.conf || echo "$key=1" >> /etc/ufw/sysctl.conf
 done
 # Ctrl+Alt+Del in a provider's web console doesn't restart the server: one keystroke there could
