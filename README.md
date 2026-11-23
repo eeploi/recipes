@@ -35,7 +35,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 |---|---|---|
 | 0 | `first-boot/00-lock-root.sh` | Locks root's password and records that it did (`/etc/eeploi/root-locked`) |
 | 0 | `stack/00-values.sh` | Writes the values to `/etc/eeploi/recipes.conf` (Values) |
-| 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times |
+| 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times; an install or upgrade waits up to ten minutes for dpkg's lock |
 | 0 | `first-boot/00-helper-download.sh` | Downloads eeploi-helper and checks its signature and SHA-256 |
 | 1 | `ubuntu-26.04/01-packages.sh` | nginx, PHP, Node, Redis, Supervisor, the database, Composer and a pinned npm, without Ubuntu's `globalignorefile` and its update notice |
 | 2 | `stack/02-deploy-user.sh` | The deploy user, with eeploi's key only; cron and at for root and that user only; PHP-FPM's stock `[www]` pool closed (on demand, two workers, a socket only root may open), no `X-Powered-By` header, no session upload progress |
