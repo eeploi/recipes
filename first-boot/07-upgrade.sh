@@ -1,4 +1,4 @@
-# 7. Updates: every update waiting, once, before the server reports ready.
+# 7. Updates: every update Ubuntu offers this server now, once, before the server reports ready.
 STEP='7. Install updates'
 # D-28: everything waiting, not only security (step 7 limits unattended-upgrades to that later); a
 # failed update fails the first boot. After step 7, so an update keeps eeploi's config files. New
@@ -7,4 +7,4 @@ STEP='7. Install updates'
 # restart the cloud-init unit running this script. The reboot after the first boot, through the
 # helper, restarts everything.
 NEEDRESTART_SUSPEND=1 apt-get -o DPkg::Lock::Timeout=600 upgrade --with-new-pkgs -yq
-echo '# Written by the eeploi recipes once the first boot installed every update waiting.' > /etc/eeploi/updated
+echo '# Written by the eeploi recipes once the first boot installed every update Ubuntu offered the server then.' > /etc/eeploi/updated
