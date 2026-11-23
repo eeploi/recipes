@@ -6,6 +6,8 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 ## Unreleased
 
+## 0.7.0
+
 ### Added
 
 - `first-boot/00-apt-timers.sh` and its check: the first boot stops apt's daily timers before step 1 and waits up to five minutes for a daily job already running, since `apt-get update` fails at once while apt's lists lock is held; step 7 stops them again after its upgrade, as an apt update starts them; they stay enabled and start again with the reboot after the first boot (#77).
@@ -16,6 +18,7 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 - Step 0 (`stack/00-apt-retries.sh`) also has every apt install and upgrade wait up to five minutes for dpkg's lock (`DPkg::Lock::Timeout "300"` in `/etc/apt/apt.conf.d/80-eeploi-retries`), which apt's timers can hold at first boot; its check fails without it. `first-boot/07-upgrade.sh` takes it from there (#77).
 - Step 8 turns nginx's `server_tokens` off in `/etc/nginx/nginx.conf` (Ubuntu's file sets `build`), so no nginx version or build name shows in the `Server` header or on error pages; its check fails when nginx.conf doesn't turn it off or any file nginx reads turns it on again. D-27: an nginx update keeps the changed `nginx.conf` (#72).
+- CI tests with eeploi-helper 1.3.0.
 
 ## 0.6.0
 
