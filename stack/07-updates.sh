@@ -61,7 +61,7 @@ SYSCTL
 # D-30: UFW applies its own sysctl file at boot, after systemd-sysctl, and Ubuntu's turns martian
 # logging off again: its two lines say 1 too, every other line stays. A ufw update keeps the file
 # (--force-confold).
-for key in net/ipv4/conf/all/log_martians net/ipv4/conf/default/log_martians; do
+for key in net/ipv4/conf/{all,default}/log_martians; do
   sed -i -E "s|^[[:space:]]*${key}[[:space:]]*=.*|$key=1|" /etc/ufw/sysctl.conf
   grep -qxF "$key=1" /etc/ufw/sysctl.conf || echo "$key=1" >> /etc/ufw/sysctl.conf
 done

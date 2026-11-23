@@ -385,14 +385,12 @@ jobs:
             ufw=/etc/ufw/sysctl.conf
             all=net/ipv4/conf/all/log_martians default=net/ipv4/conf/default/log_martians
             boot() { /usr/lib/systemd/systemd-sysctl && sysctl -e -q -p "$ufw"; }
-            cp "$ufw" /tmp/ufw-eeploi
             cp /tmp/ufw-ubuntu "$ufw"
             boot
             fails_07 "the ufw sysctl file of Ubuntu at boot" "/proc/sys/net/ipv4/conf/all/log_martians is not 1"
             /usr/lib/systemd/systemd-sysctl
             fails_07 "the ufw sysctl file of Ubuntu" "/etc/ufw/sysctl.conf: not $all=1"
             bash <(bin/render.sh --step stack/07-updates.sh)
-            cmp /tmp/ufw-eeploi "$ufw"
             changed=$(printf "< %s=0\n< %s=0\n> %s=1\n> %s=1" "$all" "$default" "$all" "$default")
             [ "$(diff /tmp/ufw-ubuntu "$ufw" | grep "^[<>]")" = "$changed" ] || { diff /tmp/ufw-ubuntu "$ufw"; exit 1; }
             boot
@@ -403,7 +401,6 @@ jobs:
             fails_07 "no line" "/etc/ufw/sysctl.conf: not $default=1"
             bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
-            cp /tmp/ufw-eeploi "$ufw"
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash /tmp/check-07'
 
