@@ -44,16 +44,6 @@ jobs:
       - name: Layout
         run: bin/check-layout.sh
 
-      # TEMPORARY (#77), removed before the PR is ready: apt-get update while apt's lists lock is held.
-      - name: TEMP apt-get update and the lists lock
-        run: |
-          sudo python3 -c 'import fcntl, time; f = open("/var/lib/apt/lists/lock", "w"); fcntl.lockf(f, fcntl.LOCK_EX); time.sleep(40)' &
-          sleep 3
-          start=$SECONDS
-          if sudo apt-get -o DPkg::Lock::Timeout=600 update -q; then r=ran; else r=failed; fi
-          echo "apt-get update $r after $((SECONDS - start)) s, lock held 40 s"
-          wait
-
       # D-1: only prehashed signatures count, as on every server: each minisign -V in ci.yml and bin/
       # has -H, but for a line marked "legacy on purpose". Then a line without -H must fail it.
       - name: minisign -V, prehashed only
@@ -385,18 +375,6 @@ jobs:
             bash /tmp/check-07
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash /tmp/check-07'
-
-      # TEMPORARY (#77), removed before the PR is ready: the same lock test on 26.04's apt.
-      - name: TEMP apt-get update and the lists lock, 26.04
-        run: |
-          docker exec twice bash -uc '
-            python3 -c "import fcntl, time; f = open(\"/var/lib/apt/lists/lock\", \"w\"); fcntl.lockf(f, fcntl.LOCK_EX); time.sleep(40)" &
-            sleep 3
-            apt-get --version | head -n 1
-            start=$SECONDS
-            if apt-get update -q; then r=ran; else r=failed; fi
-            echo "26.04: apt-get update $r after $((SECONDS - start)) s, lock held 40 s, DPkg::Lock::Timeout $(apt-config dump | grep -i lock::timeout)"
-            wait'
 
       # A step that leaves a unit failed fails bin/run-twice.sh: step 9, in a copy of the repo,
       # with a line more that breaks nginx. Then nginx runs again.
