@@ -681,7 +681,8 @@ jobs:
       # logrotate.
       # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
       # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
-      # Then the script printed to run by hand, as eeploi renders it, with the matrix's PHP.
+      # Then the script printed to run by hand, as eeploi renders it, with the matrix's PHP, and the
+      # first boot's updates (first-boot/07-upgrade.sh), after which no update waits.
       - name: server, built
         run: |
           docker build --build-arg UBUNTU_IMAGE -t server - <<'DOCKERFILE'
@@ -711,7 +712,9 @@ jobs:
             chmod 440 /etc/sudoers.d/eeploi
             visudo -cqf /etc/sudoers.d/eeploi
             bin/render.sh --no-first-boot > /root/by-hand.sh
-            bash /root/by-hand.sh'
+            bash /root/by-hand.sh
+            DEBIAN_FRONTEND=noninteractive bash -euo pipefail first-boot/07-upgrade.sh
+            if apt-get -s full-upgrade | grep "^Inst "; then echo "an update still waits"; exit 1; fi'
 
       # The release served over HTTPS on localhost, with a certificate the server trusts.
       - name: server, the release on a local HTTPS server
@@ -781,6 +784,18 @@ jobs:
             passes "root locked, no marker"
             no_note
             mv /root/root-locked /etc/eeploi/root-locked'
+
+      # The first boot's updates, as their check sees them: without the record step 7 writes once it
+      # installed them (/etc/eeploi/updated), the check fails.
+      - name: server, recipe-run without the update record
+        run: |
+          docker exec server bash -euc '
+            run() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper recipe-run 99.0.0 example 2>&1; }
+            [ "$(stat -c "%F %U:%G" /etc/eeploi/updated)" = "regular file root:root" ]
+            mv /etc/eeploi/updated /root/updated
+            if out=$(run); then echo "$out"; echo "recipe-run passed without the update record"; exit 1; fi
+            grep -qxF "check failed first-boot/07-upgrade.check.sh" <<< "$out" || { echo "$out"; exit 1; }
+            mv /root/updated /etc/eeploi/updated'
 
       # Step 4 runs again and changes nothing (and leaves the package's moduli file as it is), and its
       # check passes. Then the check fails on each setting turned back in a drop-in that sorts

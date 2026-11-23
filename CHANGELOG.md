@@ -6,6 +6,10 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 ## Unreleased
 
+### Added
+
+- `first-boot/07-upgrade.sh` and its check: the first boot installs every update waiting, after step 7 and before step 10, so a new server has no known update missing; a failed update fails the first boot (D-28, #71).
+
 ### Changed
 
 - Step 8 turns nginx's `server_tokens` off in `/etc/nginx/nginx.conf` (Ubuntu's file sets `build`), so no nginx version or build name shows in the `Server` header or on error pages; its check fails when nginx.conf doesn't turn it off or any file nginx reads turns it on again. D-27: an nginx update keeps the changed `nginx.conf` (#72).

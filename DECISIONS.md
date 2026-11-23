@@ -238,3 +238,12 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Why:** Ubuntu's `nginx.conf` sets `server_tokens build` in `http {}`, and nginx refuses a second `server_tokens` there, so a file of eeploi's own in `conf.d` can't turn it off.
 - **Where:** `stack/08-nginx.sh`, `stack/08-nginx.check.sh`, `stack/08-nginx.probe.sh`
 
+
+## D-28: A new server installs every update waiting, then reboots once
+
+- **Kind:** decision
+- **Decided:** 2026-11-22, #71
+- **What:** the first boot installs every update waiting, not only security ones (`apt-get full-upgrade`), after step 7 and before step 10. After that, unattended-upgrades takes security updates only (D-6). An update that fails fails the first boot. The server then reboots once before it is ready, also without a new kernel; the reboot comes after the first boot, through the helper, so the first boot keeps one report path.
+- **Why:** a provider's image is behind; a new one had 95 security updates waiting minutes after its first boot. A new server is the one moment an update and a reboot cost nothing: no sites, no visitors. A server that can't update doesn't go live. One reboot always, with no "is it needed?" logic, also proves every service comes back.
+- **Accepted:** the first boot takes longer, more on an older image. A server built before this has no record of it, and its check fails under `recipe-run` (D-10).
+- **Where:** `first-boot/07-upgrade.sh`
