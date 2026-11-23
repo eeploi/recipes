@@ -155,7 +155,7 @@ jobs:
 
       # bin/release.sh against a fake GitHub (a gh stub, a local origin, test keys): the overview, each
       # check (the helper release and its key, CI's jobs on the commit, the changes since the previous
-      # release), one question before anything is built or signed, colour only on a terminal; a draft whose
+      # release), one question before anything is built or signed, the result; a draft whose
       # files don't verify stays a draft, a failed publish says whether it is still a draft, published
       # or unknown, and a release is published from its checked draft, which makes the tag. Also the
       # build from a commit, the same bytes as from its tag. Needs minisign, installed above.

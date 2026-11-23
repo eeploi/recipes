@@ -11,7 +11,7 @@
 # be next to it (.pub) and the same as minisign.pub.
 # It takes no values: the version, the helper and the providers come from main's head
 # (bin/release-values.sh, D-26).
-# Usage: bin/release.sh [--check]
+# usage: bin/release.sh [--check]
 set -euo pipefail
 export LC_ALL=C
 cd "$(dirname "$0")/.."
@@ -24,28 +24,19 @@ CI_JOBS=(check 'server (8.5)' 'server (8.4)')
 key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
 check_only=
 [ "${1:-}" != --check ] || { check_only=1; shift; }
-[ "$#" -eq 0 ] || { echo "Usage: bin/release.sh [--check]: the version, helper and providers come from main's head" >&2; exit 2; }
+[ "$#" -eq 0 ] || { echo "usage: bin/release.sh [--check]" >&2; exit 64; }
 # shellcheck source=bin/release-values.sh
 . bin/release-values.sh
 
-# Colour only on a terminal, never in a pipe or a log, and never inside a message: it reads the same
-# without. NO_COLOR turns it off. Each fd is looked at here, once: inside a $(…) stdout is a pipe.
-tty1=; [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ] || tty1=1
-tty2=; [ ! -t 2 ] || [ -n "${NO_COLOR:-}" ] || tty2=1
-# paint <fd, 1 or 2> <SGR code> <text>
-paint() {
-  local on=$tty1
-  [ "$1" = 1 ] || on=$tty2
-  if [ -n "$on" ]; then printf '\033[%sm%s\033[0m' "$2" "$3"; else printf '%s' "$3"; fi
-}
 line() { printf '%s\n' "=========================================="; }
 # field <label> <value>: one line of the overview.
 field() { printf '%-18s %s\n' "$1" "$2"; }
-heading() { printf '\n%s\n' "$(paint 1 1 "$1")"; }
-ok() { printf '  %s %s\n' "$(paint 1 32 ✓)" "$*"; }
-# printable: only printable ASCII, so text from GitHub or a commit can't move the cursor or rewrite
-# what the screen shows.
-printable() { tr -cd '\040-\176\n'; }
+heading() { printf '\n%s\n' "$1"; }
+ok() { printf '  ✓ %s\n' "$*"; }
+# printable: no control character (ESC, CR, tab and the like; a newline stays), also none of UTF-8's C1
+# controls (U+0080 to U+009F, such as CSI), so text from GitHub or a commit can't move the cursor or
+# rewrite what the screen shows. Other UTF-8 stays.
+printable() { tr -d '\000-\011\013-\037\177' | sed $'s/\xc2[\x80-\x9f]//g'; }
 
 # While a draft may be on GitHub, $left says so and how to delete it: every failure then ends with it,
 # also one that stops without fail() (Ctrl-C). Once published, it says the version is released.
@@ -62,7 +53,7 @@ on_exit() {
 }
 trap on_exit EXIT
 # A failure can carry gh's own output: printable only.
-fail() { printf '  %s %s\n' "$(paint 2 31 ✗)" "$(printf '%s' "$*${left:+: $left}" | printable)" >&2; left=; exit 1; }
+fail() { printf '  ✗ %s\n' "$(printf '%s' "$*${left:+: $left}" | printable)" >&2; left=; exit 1; }
 # Any other command that fails stops here too.
 trap 'fail "line $LINENO failed"' ERR
 # key_id <base64 public key>: its key id as minisign prints it: bytes 3 to 10, lowest byte first.
@@ -172,7 +163,7 @@ pub_id=$(key_id "$(sed -n 2p minisign.pub)")
 helper_id=$(key_id "$helper_pub")
 
 line
-printf '%s  ·  release\n' "$(paint 1 1 "EEPLOI RECIPES")"
+printf 'EEPLOI RECIPES  ·  release\n'
 line
 field "Previous version" "${previous:-none}${previous:+   (v$previous)}"
 field "New version" "$version"
@@ -186,9 +177,10 @@ heading "Checks"
 [ "$branch" = main ] || fail "not on main"
 [ -z "$(git status --porcelain)" ] || fail "uncommitted changes"
 [ "$head" = "$(git rev-parse origin/main)" ] || fail "main is not the same as GitHub's main: pull or push first"
+ok "main is clean and matches GitHub"
 diff "$work/tags.local" "$work/tags.remote" | sed -n 's/^</    here only or other:/p; s/^>/    GitHub only or other:/p' | printable >&2 || true
 cmp -s "$work/tags.local" "$work/tags.remote" || fail "the v* tags here are not GitHub's (above): git fetch --tags, or remove a local one"
-ok "main is clean and matches GitHub, its v* tags too"
+ok "the v* tags here match GitHub's"
 
 # D-21: a v* tag can't move and a release can't change, so a version is released once. Publishing
 # makes the tag: until then there is none. The tags here are GitHub's (above).
@@ -225,11 +217,12 @@ run=$(gh run list -R "$REPO" --commit "$head" --workflow ci.yml --event push --b
   --json databaseId --jq '.[0].databaseId // ""') || fail "could not ask GitHub for CI on $short"
 [ -n "$run" ] || fail "CI has no run on main at $short yet"
 [[ $run =~ ^[0-9]+$ ]] || fail "could not read CI's run on $short ($run)"
-gh run view "$run" -R "$REPO" --json headSha,status,conclusion,jobs \
-  --jq '.headSha, "\(.status)/\(.conclusion)", (.jobs[] | "\(.name)\t\(.status)/\(.conclusion)")' \
+gh run view "$run" -R "$REPO" --json headSha,event,headBranch,status,conclusion,jobs \
+  --jq '"\(.headSha) \(.event) \(.headBranch)", "\(.status)/\(.conclusion)", (.jobs[] | "\(.name)\t\(.status)/\(.conclusion)")' \
   > "$work/ci" || fail "could not read CI's run $run on $short"
-{ read -r ci_sha; read -r ci_state; } < "$work/ci"
+{ read -r ci_sha ci_event ci_branch; read -r ci_state; } < "$work/ci" || true
 [ "$ci_sha" = "$head" ] || fail "CI's run $run is not on $short ($ci_sha)"
+[ "$ci_event $ci_branch" = "push main" ] || fail "CI's run $run is not for the push to main ($ci_event $ci_branch)"
 [ "$ci_state" = completed/success ] || fail "CI's run $run on $short has not passed ($ci_state)"
 passed=
 for job in "${CI_JOBS[@]}"; do
@@ -260,7 +253,10 @@ ok "immutable releases on, $out is free"
 # Subjects only while they fit on a screen, never a diff.
 if [ -n "$previous" ]; then
   since=refs/tags/v$previous
-  git merge-base --is-ancestor "$since" "$head" || fail "v$previous is not in the history of $short"
+  ancestor=0
+  git merge-base --is-ancestor "$since" "$head" || ancestor=$?
+  [ "$ancestor" != 1 ] || fail "v$previous is not in the history of $short"
+  [ "$ancestor" = 0 ] || fail "git could not compare v$previous with $short"
   count=$(git rev-list --count "$since..$head")
   changed=$(git diff --name-only "$since" "$head" -- stack first-boot 'ubuntu-*' markers providers) ||
     fail "could not compare v$previous with $short"
@@ -287,7 +283,8 @@ fi
 
 [ -t 0 ] || fail "run this in your own terminal: minisign asks for the key password"
 printf '\n'
-read -r -p "$(paint 2 1 "Sign $version?") [y/N] " answer || answer=
+# read -p asks on stderr. An end of input is a no.
+read -r -p "Sign $version? [y/N] " answer || answer=
 [ "$answer" = y ] || fail "stopped: nothing built, signed or published"
 
 built=1
@@ -365,6 +362,15 @@ ok "published: $tag, immutable"
 
 printf '\n'
 line
-printf '%s  %s\n' "$(paint 1 '1;32' RELEASED)" "$title"
-for f in "${files[@]}"; do printf '%s  %s\n' "${f##*/}" "$(sha256 "$f")"; done
+printf 'RELEASED  %s\n' "$title"
+field "Tag" "$tag  on $short"
+field "Key" "$pub_id"
+# One line per file, the SHA-256 after the longest name.
+width=0
+for f in "${files[@]}"; do [ "${#f}" -le "$width" ] || width=${#f}; done
+label=SHA-256
+for f in "${files[@]}"; do
+  field "$label" "$(printf '%-*s  %s' "$((width - ${#out} - 1))" "${f##*/}" "$(sha256 "$f")")"
+  label=
+done
 line

@@ -49,7 +49,7 @@ case "$1 $2" in
     sha=$(git rev-parse HEAD)
     if [ "$sub" = list ]; then json=${GH_RUNS-'[{"databaseId":42}]'}; else
       jobs='{"name":"check","status":"completed","conclusion":"success"},{"name":"server (8.5)","status":"completed","conclusion":"success"},{"name":"server (8.4)","status":"completed","conclusion":"success"}'
-      json=${GH_RUN-"{\"headSha\":\"$sha\",\"status\":\"completed\",\"conclusion\":\"success\",\"jobs\":[$jobs]}"}
+      json=${GH_RUN-"{\"headSha\":\"$sha\",\"event\":\"push\",\"headBranch\":\"main\",\"status\":\"completed\",\"conclusion\":\"success\",\"jobs\":[$jobs]}"}
     fi
     jq -r "$jq" <<< "$json" ;;
   "release view")
@@ -121,7 +121,7 @@ for k in helper other; do
 done
 # git without the user's own config (signing, hooks), and never on the real repo (GIT_DIR from a hook, say).
 env_=(-u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u RECIPES_COMMIT -u RECIPES_DIR -u RECIPES_PUB
-  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GH_STATE="$t/gh" GH_ORIGIN="$t/origin.git" GH_TAG=v9.9.9 GH_HELPERS="$t/helpers" NO_COLOR=1
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GH_STATE="$t/gh" GH_ORIGIN="$t/origin.git" GH_TAG=v9.9.9 GH_HELPERS="$t/helpers"
   PATH="$t/stubs:$PATH" RECIPES_KEY="$t/key.key")
 tgit() { env "${env_[@]}" git -c user.name=Test -c user.email=test@example.com "$@"; }
 
@@ -166,14 +166,12 @@ checks() {
 }
 # run <answer> <exit code> <name> <expected output>: bin/release.sh in a terminal (script, util-linux
 # or BSD), the answer typed at its question. The input stays open until it ends: at the end of its
-# input, BSD script types an end of file before the answer. NO_COLOR is set, unless $colour.
-colour=
+# input, BSD script types an end of file before the answer.
 run() {
   local answer=$1 cmd
   shift
   rm -f "$t/ended"
   cmd="bash bin/release.sh"
-  [ -z "$colour" ] || cmd="env -u NO_COLOR $cmd"
   out=$({ printf '%s\n' "$answer"; while [ ! -e "$t/ended" ]; do sleep 0.1; done; } |
     { cd "$repo" && if script --version 2>/dev/null | grep -q util-linux; then
         env "${env_[@]}" timeout 60 script -qec "$cmd" /dev/null
@@ -234,7 +232,8 @@ Providers          example
 
 Checks
 "
-expect 0 "the checks, in order" "  ✓ main is clean and matches GitHub, its v* tags too
+expect 0 "the checks, in order" "  ✓ main is clean and matches GitHub
+  ✓ the v* tags here match GitHub's
   ✓ 9.9.9 is higher than every released version
   ✓ CHANGELOG: ## 9.9.9, Unreleased empty
   ✓ helper v1.2.3 is released, and its key matches HELPER_PUBKEY ($hid)
@@ -244,7 +243,7 @@ expect 0 "the checks, in order" "  ✓ main is clean and matches GitHub, its v* 
   ✓ First release: no earlier version
 
 Every check passed."
-check "no colour in a pipe" test -z "$(grep $'\033' <<< "$out" || true)"
+check "plain text, no escape" test -z "$(grep $'\033' <<< "$out" || true)"
 check "the checks made nothing" test -z "$(grep -E '^release (create|edit)' "$t/gh/log")"
 check "the checks built nothing" test ! -e "$repo/dist"
 check "CI: the latest run of the push to main on this commit" \
@@ -281,14 +280,16 @@ for v in 9.10.0 9.09.9 9.9.8; do
 done
 
 echo "== bin/release.sh, CI on the commit"
-# run_json <jobs> [<commit>] [<conclusion>]: what GitHub gives for the run; job <name> [<status>]
+# run_json <jobs> [<commit>] [<conclusion>] [<event>]: what GitHub gives for the run; job <name> [<status>]
 # [<conclusion, JSON>].
-run_json() { printf '{"headSha":"%s","status":"completed","conclusion":"%s","jobs":[%s]}' "${2:-$head}" "${3:-success}" "$1"; }
+run_json() { printf '{"headSha":"%s","event":"%s","headBranch":"main","status":"completed","conclusion":"%s","jobs":[%s]}' "${2:-$head}" "${4:-push}" "${3:-success}" "$1"; }
 job() { printf '{"name":"%s","status":"%s","conclusion":%s}' "$1" "${2:-completed}" "${3:-\"success\"}"; }
 all="$(job check),$(job 'server (8.5)'),$(job 'server (8.4)')"
 GH_RUNS='[]' checks 1 "no CI run on the commit stops the checks" "✗ CI has no run on main at $short yet"
 GH_RUNS='[{"databaseId":"42; x"}]' checks 1 "a run id that is no number stops the checks" "✗ could not read CI's run on $short (42; x)"
 GH_RUN=$(run_json "$all" 0000000) checks 1 "a run on another commit stops the checks" "✗ CI's run 42 is not on $short (0000000)"
+GH_RUN=$(run_json "$all" "$head" success pull_request) checks 1 "a run for a pull request stops the checks" \
+  "✗ CI's run 42 is not for the push to main (pull_request main)"
 GH_RUN=$(run_json "$all" "$head" failure) checks 1 "a run that failed, its named jobs passed, stops the checks" \
   "✗ CI's run 42 on $short has not passed (completed/failure)"
 GH_RUN=$(run_json "$(job check),$(job 'server (8.5)')") checks 1 "a job missing stops the checks" \
@@ -323,7 +324,7 @@ for extra in 9.9.9 "--check 9.9.9" "9.9.9 $helper example" --verify; do
   code=0
   # shellcheck disable=SC2086 # the words of $extra
   out=$(cd "$repo" && env "${env_[@]}" bash bin/release.sh $extra 2>&1) || code=$?
-  expect 2 "an argument is refused: $extra" "Usage: bin/release.sh [--check]"
+  expect 64 "an argument is refused: $extra" "usage: bin/release.sh [--check]"
 done
 # refused <name> <expected output> <shell code>: main's head with the code run on it, committed,
 # stops the checks; then main is back at $head.
@@ -374,14 +375,14 @@ echo '# a change' >> "$repo/stack/start.sh"
 tgit -C "$repo" commit -qam "Step 10: a change (#12)"
 echo 'More words.' >> "$repo/README.md"
 tgit -C "$repo" commit -qam "README: more words (#13)"
-tgit -C "$repo" commit -q --allow-empty -m $'An odd \033[2J subject'
+tgit -C "$repo" commit -q --allow-empty -m $'An odd \033[2J\r\xc2\x9b2J subject, UTF-8 kept: nginx \xe2\x86\x92 caf\xc3\xa9'
 tgit -C "$repo" push -q origin main
 checks 0 "a few commits: their subjects, the pull request first" "  ✓ Changes since v9.9.8: 3 commits, 1 server file changed
       #12 Step 10: a change
       #13 README: more words
-      An odd [2J subject
+      An odd [2J2J subject, UTF-8 kept: nginx → café
 "
-check "a subject with an escape is printed without it" test -z "$(grep $'\033' <<< "$out" || true)"
+check "a subject with control characters is printed without them" test -z "$(grep -E $'\033|\r|\xc2\x9b' <<< "$out" || true)"
 echo example2 >> "$repo/providers"
 echo '# a marker comment' >> "$repo/markers"
 for i in 1 2 3 4 5 6; do tgit -C "$repo" commit -q --allow-empty -m "more $i"; done
@@ -408,9 +409,6 @@ expect 1 "the question names the version" "Sign 9.9.9? [y/N]"
 check "no at the question: no draft" test -z "$(grep -E '^release (create|edit)' "$t/gh/log")"
 check "no at the question: nothing built" test ! -e "$repo/dist/9.9.9"
 reset
-colour=1 run n 1 "in a terminal, in colour" "stopped: nothing built, signed or published"
-check "in a terminal: a green ✓" grep -qF $'\033[32m✓\033[0m main is clean' <<< "$out"
-check "in a terminal: a red ✗" grep -qF $'\033[31m✗\033[0m stopped' <<< "$out"
 reset
 left create "the draft's files don't upload" "could not create the draft"
 check "a run that stops before publishing removes what it built" test ! -e "$repo/dist/9.9.9"
@@ -456,9 +454,13 @@ run y 0 "$name" "  ✓ built from $short, the same bytes as from a tag on it
 ==========================================
 RELEASED  eeploi-recipes 9.9.9
 "
-for f in "$t"/gh/assets/*; do
-  check "$name: the SHA-256 of ${f##*/}" grep -qxF "${f##*/}  $(sha "$f")" <<< "$out"
-done
+# The files exist once the run made them: the result block after it.
+a=$t/gh/assets
+expect 0 "$name: the result, the tag, the key and the SHA-256 of each file, aligned" "RELEASED  eeploi-recipes 9.9.9
+$(printf '%-18s %s\n' Tag "v9.9.9  on $short" Key "$kid")
+$(printf '%-18s %-51s  %s\n' SHA-256 "$m" "$(sha "$a/$m")" '' "$m.minisig" "$(sha "$a/$m.minisig")" \
+  '' recipes-9.9.9.tar.gz "$(sha "$a/recipes-9.9.9.tar.gz")")
+=========================================="
 check "$name: the draft on the checked commit" grep -qE "^release create v9.9.9 .* -R eeploi/recipes --draft --target $head --title eeploi-recipes 9.9.9 --notes " "$t/gh/log"
 check "$name: published after its files were checked" \
   test "$(grep -v 'eeploi/helper' "$t/gh/log" | sed -nE 's/^release (create|download|edit) .*/\1/p' | paste -sd ' ' -)" = "create download edit download"
