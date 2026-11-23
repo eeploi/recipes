@@ -43,6 +43,14 @@ done
 for key in /proc/sys/net/ipv4/conf/all/log_martians /proc/sys/net/ipv4/conf/default/log_martians; do
   [ "$(cat "$key")" = 1 ] || { echo "$key is not 1" >&2; exit 1; }
 done
+# D-30: UFW's own sysctl file, which it applies at boot after systemd-sysctl, logs martians too:
+# each key is there, and only as =1.
+for key in net/ipv4/conf/all/log_martians net/ipv4/conf/default/log_martians; do
+  lines=$(grep -sE "^[[:space:]]*${key}[[:space:]]*=" /etc/ufw/sysctl.conf) || true
+  if [ -z "$lines" ] || grep -qvxF "$key=1" <<< "$lines"; then
+    echo "/etc/ufw/sysctl.conf: not $key=1" >&2; exit 1
+  fi
+done
 # Ctrl+Alt+Del restarts nothing: the target is masked, and a burst of presses does nothing now; the
 # drop-in has the line for the next boot.
 [ "$(systemctl is-enabled ctrl-alt-del.target 2>/dev/null)" = masked ] \

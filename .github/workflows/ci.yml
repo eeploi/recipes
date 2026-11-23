@@ -325,7 +325,10 @@ jobs:
       # that sends redirects, with Ubuntu's origins added to ours (no #clear; with it, an origin
       # pattern in an earlier file is cleared), without the conffile options, with ctrl-alt-del.target
       # unmasked (step 7 masks it again), with CtrlAltDelBurstAction back at reboot-force (in the
-      # file, then running too), and without its apt lines: every line of a check counts, not only
+      # file, then running too), with ufw's own sysctl file as Ubuntu ships it (D-30: martians off): applied
+      # after systemd-sysctl as at boot, then on disk only; step 7 changes only its two lines, and
+      # then the boot order leaves martians logged. Also with a second line for a key at 0, or none
+      # at all. And without its apt lines: every line of a check counts, not only
       # the last. getty.target is masked in the image: the container sees the runner's /dev/tty1,
       # where getty@tty1 exits at once and is restarted until systemd's start limit leaves it
       # failed, during whichever step runs then. A container has no console to log in on.
@@ -335,7 +338,8 @@ jobs:
           ARG UBUNTU_IMAGE
           FROM $UBUNTU_IMAGE
           RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
-                fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl cloud-init && useradd -m deploy \
+                fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl cloud-init ufw procps \
+            && useradd -m deploy \
             && systemctl mask getty.target
           CMD ["/sbin/init"]
           DOCKERFILE
@@ -344,6 +348,7 @@ jobs:
           timeout 120 bash -c 'until docker exec twice systemctl is-system-running 2>/dev/null | grep -qE "^(running|degraded)$"; do sleep 2; done'
           docker exec twice bash -euc '
             systemctl is-active fail2ban nginx
+            cp /etc/ufw/sysctl.conf /tmp/ufw-ubuntu
             bin/run-twice.sh
             systemctl is-active fail2ban nginx
             bin/render.sh --check stack/07-updates.sh > /tmp/check-07
@@ -377,6 +382,28 @@ jobs:
             fails_07 "the burst action reboot-force" "CtrlAltDelBurstAction is not none"
             bash <(bin/render.sh --step stack/07-updates.sh)
             bash /tmp/check-07
+            ufw=/etc/ufw/sysctl.conf
+            all=net/ipv4/conf/all/log_martians default=net/ipv4/conf/default/log_martians
+            boot() { /usr/lib/systemd/systemd-sysctl && sysctl -e -q -p "$ufw"; }
+            cp "$ufw" /tmp/ufw-eeploi
+            cp /tmp/ufw-ubuntu "$ufw"
+            boot
+            fails_07 "the ufw sysctl file of Ubuntu at boot" "/proc/sys/net/ipv4/conf/all/log_martians is not 1"
+            /usr/lib/systemd/systemd-sysctl
+            fails_07 "the ufw sysctl file of Ubuntu" "/etc/ufw/sysctl.conf: not $all=1"
+            bash <(bin/render.sh --step stack/07-updates.sh)
+            cmp /tmp/ufw-eeploi "$ufw"
+            changed=$(printf "< %s=0\n< %s=0\n> %s=1\n> %s=1" "$all" "$default" "$all" "$default")
+            [ "$(diff /tmp/ufw-ubuntu "$ufw" | grep "^[<>]")" = "$changed" ] || { diff /tmp/ufw-ubuntu "$ufw"; exit 1; }
+            boot
+            bash /tmp/check-07
+            echo "$default = 0" >> "$ufw"
+            fails_07 "a second line at 0" "/etc/ufw/sysctl.conf: not $default=1"
+            sed -i "\|^$default|d" "$ufw"
+            fails_07 "no line" "/etc/ufw/sysctl.conf: not $default=1"
+            bash <(bin/render.sh --step stack/07-updates.sh)
+            bash /tmp/check-07
+            cp /tmp/ufw-eeploi "$ufw"
             rm /etc/apt/apt.conf.d/20auto-upgrades
             ! bash /tmp/check-07'
 

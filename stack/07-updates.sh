@@ -58,6 +58,13 @@ net.ipv4.conf.all.log_martians = 1
 net.ipv4.conf.default.log_martians = 1
 SYSCTL
 /usr/lib/systemd/systemd-sysctl /etc/sysctl.d/60-eeploi-network.conf
+# D-30: UFW applies its own sysctl file at boot, after systemd-sysctl, and Ubuntu's turns martian
+# logging off again: its two lines say 1 too, every other line stays. A ufw update keeps the file
+# (--force-confold).
+for key in net/ipv4/conf/all/log_martians net/ipv4/conf/default/log_martians; do
+  sed -i -E "s|^[[:space:]]*${key}[[:space:]]*=.*|$key=1|" /etc/ufw/sysctl.conf
+  grep -qxF "$key=1" /etc/ufw/sysctl.conf || echo "$key=1" >> /etc/ufw/sysctl.conf
+done
 # Ctrl+Alt+Del in a provider's web console doesn't restart the server: one keystroke there could
 # cut off a first boot halfway. Masking the target stops one press; CtrlAltDelBurstAction=none stops
 # more than seven within two seconds, which otherwise force a reboot. A planned restart (systemctl reboot, the
