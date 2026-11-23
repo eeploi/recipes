@@ -632,6 +632,7 @@ jobs:
   # Twice: with Ubuntu's own PHP, and with a PHP from packages.sury.org, so its pinned key is tested.
   server:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30 # a step that hangs fails here, not after 6 hours
     strategy:
       fail-fast: false
       matrix:
@@ -682,7 +683,7 @@ jobs:
       # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
       # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
       # Then the script printed to run by hand, as eeploi renders it, with the matrix's PHP, and the
-      # first boot's updates (first-boot/07-upgrade.sh), after which no update waits.
+      # first boot's updates (first-boot/07-upgrade.sh, 15 minutes at most), after which no update waits.
       - name: server, built
         run: |
           docker build --build-arg UBUNTU_IMAGE -t server - <<'DOCKERFILE'
@@ -713,7 +714,10 @@ jobs:
             visudo -cqf /etc/sudoers.d/eeploi
             bin/render.sh --no-first-boot > /root/by-hand.sh
             bash /root/by-hand.sh
-            DEBIAN_FRONTEND=noninteractive bash -euo pipefail first-boot/07-upgrade.sh
+            # A hang shows what waits: the processes, systemd jobs and the last dpkg lines.
+            DEBIAN_FRONTEND=noninteractive timeout 900 bash -euo pipefail first-boot/07-upgrade.sh || { rc=$?
+              echo "07-upgrade.sh: exit $rc"; ps -ef --forest; systemctl list-jobs --no-pager || true
+              tail -n 60 /var/log/apt/term.log /var/log/dpkg.log || true; exit "$rc"; }
             if apt-get -s upgrade --with-new-pkgs | grep "^Inst "; then echo "an update still waits"; exit 1; fi'
 
       # The release served over HTTPS on localhost, with a certificate the server trusts.
