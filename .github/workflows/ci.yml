@@ -586,8 +586,10 @@ jobs:
             bash /tmp/check'
 
       # cloud-init after AppArmor (D-29: canonical/cloud-init#7142): the check fails with another
-      # line in the drop-in, with another mode, and with the drop-in in place but not loaded by
-      # systemd. After each, the step puts it right again. A container can't reproduce the race.
+      # line in the drop-in, another owner, another mode, and a link to the same lines; after each,
+      # the step puts it right again. Without the drop-in loaded, Ubuntu's own unit is not after
+      # apparmor.service, and the check's last test fails (run alone, as its first ones fail
+      # first). A container can't reproduce the race.
       - name: cloud-init after AppArmor, its check
         run: |
           docker exec twice bash -euc '
@@ -596,18 +598,23 @@ jobs:
             bin/render.sh --check ubuntu-26.04/00-cloud-init.sh > /tmp/check
             bash /tmp/check
             fails() {
-              if bash /tmp/check 2> /tmp/out; then echo "check passed with $1"; exit 1; fi
+              if bash "${3:-/tmp/check}" 2> /tmp/out; then echo "check passed with $1"; exit 1; fi
               grep -qxF "$2" /tmp/out || { echo "check with $1, not: $2"; cat /tmp/out; exit 1; }
               bash /tmp/step
               bash /tmp/check
             }
             echo "After=network.target" >> "$dropin"; fails "a line more" "$dropin: not the drop-in step 0 writes"
-            chmod 664 "$dropin"; fails "mode 664" "$dropin: not root'"'"'s, 0644"
-            cp "$dropin" /tmp/dropin
-            rm "$dropin"
+            chown nobody "$dropin"; fails "another owner" "$dropin: not a file, root'"'"'s, 0644"
+            chmod 664 "$dropin"; fails "mode 664" "$dropin: not a file, root'"'"'s, 0644"
+            mv "$dropin" /tmp/dropin; ln -s /tmp/dropin "$dropin"; fails "a link" "$dropin: not a file, root'"'"'s, 0644"
+            [ ! -L "$dropin" ] || { echo "the step left the link"; exit 1; }
+            rm "$dropin" /tmp/dropin
             systemctl daemon-reload
-            cp /tmp/dropin "$dropin"
-            fails "the drop-in not loaded" "cloud-init-local.service: not after apparmor.service"'
+            after=$(systemctl show -p After --value cloud-init-local.service)
+            case " $after " in *" apparmor.service "*) echo "Ubuntu'"'"'s unit is after apparmor.service: $after"; exit 1 ;; esac
+            sed "/^cmp /,/^\[ \"\$(stat /d" /tmp/check > /tmp/check-after
+            if grep -qE "^(cmp|\[ \"\$\(stat) " /tmp/check-after; then echo "the first tests are still in"; exit 1; fi
+            fails "the drop-in not loaded" "cloud-init-local.service: not after apparmor.service" /tmp/check-after'
 
       # Every check runs on its own, as the helper runs it, and leaves /etc, fail2ban and nginx as
       # they were, passing or not (bin/checks-read-only.sh). A failing check stops at its failing
