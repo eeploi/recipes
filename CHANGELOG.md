@@ -6,6 +6,8 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 ## Unreleased
 
+## 0.9.0
+
 ### Changed
 
 - Step 7 also sets `log_martians` to `1` for `all` and `default` in UFW's own `/etc/ufw/sysctl.conf` (Ubuntu's file has `0`), leaving every other line of it as it is. UFW applies that file at boot after `systemd-sysctl`, so after a reboot martians were no longer logged. Its check fails when either key is missing there or has another value (D-30).
