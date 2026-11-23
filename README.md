@@ -17,7 +17,7 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 | Folder | Holds |
 |---|---|
 | `stack/` | The steps every Ubuntu release shares: apt retries, the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start; and their probes |
-| `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the list of probes (`probes`), the packages (`01-packages.sh`) and their probes, and the source for another PHP version than Ubuntu's (`php-source.sh`) |
+| `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the list of probes (`probes`), cloud-init's start after AppArmor (`00-cloud-init.sh`), the packages (`01-packages.sh`) and their probes, and the source for another PHP version than Ubuntu's (`php-source.sh`) |
 | `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download, the first updates and the host-key report |
 | `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test that each check is read-only (CI), the test of the report to eeploi (CI), the test of the PHP source's retry (CI), the tests of the probes and of the helper's server report (CI), the release command and its build, and the test of the release command against a fake GitHub (CI) |
 
@@ -36,6 +36,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 0 | `first-boot/00-lock-root.sh` | Locks root's password and records that it did (`/etc/eeploi/root-locked`) |
 | 0 | `stack/00-values.sh` | Writes the values to `/etc/eeploi/recipes.conf` (Values) |
 | 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times; an install or upgrade waits up to five minutes for dpkg's lock |
+| 0 | `ubuntu-26.04/00-cloud-init.sh` | cloud-init-local starts after AppArmor (`/etc/systemd/system/cloud-init-local.service.d/10-after-apparmor.conf`), so it doesn't race the rename of the network card at boot; a workaround for canonical/cloud-init#7142 (D-29) |
 | 0 | `first-boot/00-apt-timers.sh` | Stops apt's daily timers for the rest of the first boot and waits up to five minutes for a daily job already running, as `apt-get update` doesn't wait for apt's lock; they stay enabled, and the reboot after the first boot starts them again |
 | 0 | `first-boot/00-helper-download.sh` | Downloads eeploi-helper and checks its signature and SHA-256 |
 | 1 | `ubuntu-26.04/01-packages.sh` | nginx, PHP, Node, Redis, Supervisor, the database, Composer and a pinned npm, without Ubuntu's `globalignorefile` and its update notice |
