@@ -951,7 +951,8 @@ jobs:
       - name: server, the probes and server-report
         run: |
           docker exec server bin/test-probes-server.sh
-          if docker exec server grep -rlI PLANTED /etc; then echo 'a planted file is left'; exit 1; fi
+          rc=0; docker exec server grep -rlI PLANTED /etc || rc=$? # 1: none left; 0 or 2 (an error) fail
+          [ "$rc" = 1 ] || { echo "a planted file is left, or grep failed ($rc)"; exit 1; }
 
       # The text report from above, for people to read.
       - name: server, server-report in the summary
