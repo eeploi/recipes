@@ -7,4 +7,6 @@ STEP='7. Install updates'
 # restart the cloud-init unit running this script. The reboot after the first boot, through the
 # helper, restarts everything.
 NEEDRESTART_SUSPEND=1 apt-get upgrade --with-new-pkgs -yq
+# An apt update starts apt's timers again (step 0 stopped them).
+systemctl stop apt-daily.timer apt-daily-upgrade.timer
 echo '# Written by the eeploi recipes once the first boot installed every update Ubuntu offered the server then.' > /etc/eeploi/updated
