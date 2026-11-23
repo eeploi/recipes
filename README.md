@@ -94,7 +94,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   A release builds from a tag, matches its manifest, and refuses what the helper would refuse.
   `--verify` takes only a release that is unchanged and signed, prehashed, with the right key.
   The key in `minisign.pub` is `RECIPES_PUBKEY` in the helper release CI pins (`HELPER_TAG`), and the provider name rule in `bin/` is the one `recipe-run` checks there.
-  The values `bin/release.sh` reads from the commit (`bin/release-values.sh`) read from this tree: one `HELPER_TAG` line, one `HELPER_PUBKEY` line and the providers.
+  The values `bin/release` reads from the commit (`bin/release-values.sh`) read from this tree: one `HELPER_TAG` line, one `HELPER_PUBKEY` line and the providers.
   In a fresh Ubuntu 26.04 container, each `always` step runs twice as the helper runs it, leaves `/etc` the same on the second run, fails no unit, and passes its check.
   Each check is read-only, and where `ci.yml` tests it, fails without what its step writes.
   The fingerprint prints only known facts.
@@ -135,7 +135,7 @@ Its check: `/etc/eeploi` is root's and 0755; the user (not root) and the port (2
 
 ## Releases
 
-`bin/release.sh`, with no values, is the one release command. Run it in your own terminal: minisign asks for the key password. It releases `main`'s head: there is no tag before, publishing makes it (D-21). It reads its values from that commit, never from arguments (D-26, `bin/release-values.sh`):
+`bin/release`, with no values, is the one release command. Run it in your own terminal: minisign asks for the key password. It releases `main`'s head: there is no tag before, publishing makes it (D-21). It reads its values from that commit, never from arguments (D-26, `bin/release-values.sh`):
 
 - **Version:** the top version heading in [CHANGELOG.md](CHANGELOG.md), `## VERSION` right after `## Unreleased`, with lines under it (CI checks that on every pull request too). `## Unreleased` must be there, first, and empty: a line under it is a change not yet in a version.
 - **Helper:** `HELPER_TAG` in `.github/workflows/ci.yml` (`v1.2.0` is `1.2.0`), the helper release CI tested. The one line must read `  HELPER_TAG: vN.N.N`, nothing else.
@@ -149,11 +149,11 @@ It first shows an overview: the previous version (the highest `v*` tag on GitHub
 - **Version:** no tag `vVERSION`, no release and no draft of it yet, and `VERSION` higher than every `v*` tag, compared as numbers: releases only go up. A draft left by a run that stopped stops here, with how to check and delete it.
 - **CHANGELOG:** `## VERSION` right after an empty `## Unreleased`, with lines under it.
 - **Helper:** release `vMIN_HELPER` of eeploi-helper is published, its `eeploi-helper` verifies against `HELPER_PUBKEY` in CI's workflow (prehashed only) and says that version.
-- **CI:** CI's own run stands for the tests and shellcheck, nothing runs here. The latest `ci.yml` run of the push to `main` is on exactly this commit and passed, and its jobs `check`, `server (8.5)` and `server (8.4)` (`CI_JOBS` in `bin/release.sh`) are each there once and passed. A job missing or renamed stops it: nothing found never counts as passed.
+- **CI:** CI's own run stands for the tests and shellcheck, nothing runs here. The latest `ci.yml` run of the push to `main` is on exactly this commit and passed, and its jobs `check`, `server (8.5)` and `server (8.4)` (`CI_JOBS` in `bin/release`) are each there once and passed. A job missing or renamed stops it: nothing found never counts as passed.
 - **Key, GitHub, folder:** the key's public key (`.pub` next to the secret key, `~/.minisign/eeploi-recipes.key` or `RECIPES_KEY`) is `minisign.pub`, immutable releases are on, and `dist/VERSION/` is free.
 - **Changes:** the commits since the previous release and how many files that go into a release changed (`stack/`, `first-boot/`, `ubuntu-*/`, `markers`, `providers`). Up to ten, their subjects, the pull request first (`#80 …`); more, the count and the `git log` command to see them. Never a diff. Text from a commit or from GitHub is printed as printable ASCII only.
 
-`bin/release.sh --check` stops there: nothing built, signed or published. Without it, it asks `Sign VERSION? [y/N]`, its only question, and on `y`:
+`bin/release --check` stops there: nothing built, signed or published. Without it, it asks `Sign VERSION? [y/N]`, its only question, and on `y`:
 
 1. **Build:** `bin/build-release.sh` (below), from the checked commit: the same bytes as from a tag on it. It lists the files built.
 2. **Sign and verify:** each manifest with the recipes key, prehashed (`-H`), never `-l`; then `bin/build-release.sh --verify` against `minisign.pub`.
@@ -162,7 +162,7 @@ It first shows an overview: the previous version (the highest `v*` tag on GitHub
 
 Last, `RELEASED eeploi-recipes VERSION` and the SHA-256 of each file. A run that stops before publishing leaves at most a draft, with no tag, and says so: check it, delete it (`gh release delete vVERSION -R eeploi/recipes`) and run again. Until it is gone, the checks stop on it. A run that stops before publishing also removes `dist/VERSION/`, so the next run finds it free. A run that stops after publishing has released the version, and says so.
 
-`bin/build-release.sh VERSION MIN_HELPER PROVIDER...` (it keeps its values: `bin/release.sh` passes them) builds a release from its tag `vVERSION`, not from the working copy, in `dist/VERSION/`. `RECIPES_COMMIT` builds it from that commit instead, before the tag exists, as `bin/release.sh` does; a tag `vVERSION` on another commit is refused, and the files are the same, byte for byte, as from a tag on that commit. It makes one package with every file a server runs (`recipes-VERSION.tar.gz`) and a manifest per provider and Ubuntu release (`recipes-VERSION-PROVIDER-ubuntu-26.04.manifest`). It refuses a file that is not a plain file, such as a link, a path the helper refuses (each part must match `[A-Za-z0-9_][A-Za-z0-9._-]*`, so none starts with `-` or `.`), and a NUL in a list of steps or in `markers`, which bash would drop unseen. It signs nothing. The signature covers the whole manifest, and the manifest has the SHA-256 of every file.
+`bin/build-release.sh VERSION MIN_HELPER PROVIDER...` (it keeps its values: `bin/release` passes them) builds a release from its tag `vVERSION`, not from the working copy, in `dist/VERSION/`. `RECIPES_COMMIT` builds it from that commit instead, before the tag exists, as `bin/release` does; a tag `vVERSION` on another commit is refused, and the files are the same, byte for byte, as from a tag on that commit. It makes one package with every file a server runs (`recipes-VERSION.tar.gz`) and a manifest per provider and Ubuntu release (`recipes-VERSION-PROVIDER-ubuntu-26.04.manifest`). It refuses a file that is not a plain file, such as a link, a path the helper refuses (each part must match `[A-Za-z0-9_][A-Za-z0-9._-]*`, so none starts with `-` or `.`), and a NUL in a list of steps or in `markers`, which bash would drop unseen. It signs nothing. The signature covers the whole manifest, and the manifest has the SHA-256 of every file.
 
 `bin/build-release.sh --verify VERSION MIN_HELPER PROVIDER...`, with the same values, builds the release again from its tag (or `RECIPES_COMMIT`) and changes nothing. `dist/VERSION/` must hold exactly the files built, with the same bytes, and a `.minisig` per manifest that verifies the manifest built against `minisign.pub`, the recipes public key (its key id is in its first line). Only prehashed signatures (algorithm `ED`, minisign's default) count: a legacy one (`minisign -l`, `Ed`) is refused, as the helper refuses it. A manifest signed with another key, a stale signature or a changed file fails here, before upload. `RECIPES_DIR` sets another folder to verify than `dist/VERSION/`, with `--verify` only. The key in `minisign.pub` must be the same as `RECIPES_PUBKEY` in eeploi-helper.
 

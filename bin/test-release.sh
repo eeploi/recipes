@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests bin/release.sh against a fake GitHub, so no real release, tag or draft is made: a copy of
+# Tests bin/release against a fake GitHub, so no real release, tag or draft is made: a copy of
 # the working tree in a repo of its own with a local origin, a gh stub, and minisign with a test key
 # without a password. The stub keeps the release in $GH_STATE/release ("<draft> <commit>", true for
 # a draft) and its files in $GH_STATE/assets; publishing makes the tag in the origin, lightweight,
@@ -10,7 +10,7 @@
 # the published release is not immutable. GH_RUNS and GH_RUN: the JSON GitHub gives for CI's runs on
 # the commit and for the run, through the script's own --jq (default: one run, on the head, each job
 # passed). GH_HELPER: the helper release GitHub has; GH_FAIL=helperkey: its files signed with another key.
-# bin/release.sh takes no values: the copy's CHANGELOG.md says 9.9.9, its providers file example, and
+# bin/release takes no values: the copy's CHANGELOG.md says 9.9.9, its providers file example, and
 # its ci.yml's HELPER_TAG v1.2.3. Each refused value is a commit of its own, not pushed: the values
 # are read before main is compared with GitHub's.
 # Also bin/build-release.sh with RECIPES_COMMIT: the same bytes as from a tag on that commit.
@@ -143,7 +143,7 @@ tgit -C "$repo" push -q origin main
 head=$(tgit -C "$repo" rev-parse HEAD)
 short=$(tgit -C "$repo" rev-parse --short HEAD)
 undo="check it with gh release view v9.9.9 -R eeploi/recipes, delete it with gh release delete v9.9.9 -R eeploi/recipes, then run this again"
-args=(9.9.9 "$helper" example) # what bin/release.sh reads from the copy, for bin/build-release.sh
+args=(9.9.9 "$helper" example) # what bin/release reads from the copy, for bin/build-release.sh
 
 # expect <exit code> <name> <expected output>: on $code and $out of a run.
 expect() {
@@ -158,20 +158,20 @@ reset() {
   tgit --git-dir="$t/origin.git" update-ref -d refs/tags/v9.9.9
   tgit -C "$repo" update-ref -d refs/tags/v9.9.9
 }
-# checks <exit code> <name> <expected output>: bin/release.sh --check.
+# checks <exit code> <name> <expected output>: bin/release --check.
 checks() {
   code=0
-  out=$(cd "$repo" && env "${env_[@]}" bash bin/release.sh --check 2>&1) || code=$?
+  out=$(cd "$repo" && env "${env_[@]}" bash bin/release --check 2>&1) || code=$?
   expect "$@"
 }
-# run <answer> <exit code> <name> <expected output>: bin/release.sh in a terminal (script, util-linux
+# run <answer> <exit code> <name> <expected output>: bin/release in a terminal (script, util-linux
 # or BSD), the answer typed at its question. The input stays open until it ends: at the end of its
 # input, BSD script types an end of file before the answer.
 run() {
   local answer=$1 cmd
   shift
   rm -f "$t/ended"
-  cmd="bash bin/release.sh"
+  cmd="bash bin/release"
   out=$({ printf '%s\n' "$answer"; while [ ! -e "$t/ended" ]; do sleep 0.1; done; } |
     { cd "$repo" && if script --version 2>/dev/null | grep -q util-linux; then
         env "${env_[@]}" timeout 60 script -qec "$cmd" /dev/null
@@ -217,7 +217,7 @@ out=$(cd "$repo" && env "${env_[@]}" RECIPES_COMMIT="$head" bin/build-release.sh
 expect 1 "a tag of this version on another commit is refused" "v9.9.9 is on another commit than $head"
 reset
 
-echo "== bin/release.sh --check"
+echo "== bin/release --check"
 checks 0 "a new version passes the checks" "Every check passed. Nothing built, signed or published (--check)."
 expect 0 "the overview: versions, commit, key, helper, providers" "==========================================
 EEPLOI RECIPES  ·  release
@@ -279,7 +279,7 @@ for v in 9.10.0 9.09.9 9.9.8; do
   tgit -C "$repo" update-ref -d "refs/tags/v$v"
 done
 
-echo "== bin/release.sh, CI on the commit"
+echo "== bin/release, CI on the commit"
 # run_json <jobs> [<commit>] [<conclusion>] [<event>]: what GitHub gives for the run; job <name> [<status>]
 # [<conclusion, JSON>].
 run_json() { printf '{"headSha":"%s","event":"%s","headBranch":"main","status":"completed","conclusion":"%s","jobs":[%s]}' "${2:-$head}" "${4:-push}" "${3:-success}" "$1"; }
@@ -305,7 +305,7 @@ GH_RUN=$(run_json "$all,$(job check)") checks 1 "a job there twice stops the che
   "✗ CI's check job on $short has not passed (completed/success,completed/success)"
 GH_RUN=$(run_json "$(job 'check\u001b[2J' completed '"failure"'),$all") checks 0 "a job with an escape in its name is another job" "CI \`check\`"
 
-echo "== bin/release.sh, the helper"
+echo "== bin/release, the helper"
 GH_FAIL=helperkey checks 1 "a helper release signed with another key stops the checks" \
   "✗ eeploi-helper v1.2.3 does not verify against HELPER_PUBKEY ($hid)"
 # A helper version GitHub doesn't have, then one whose file says another version: pushed, so the checks
@@ -319,12 +319,12 @@ GH_HELPER=1.2.4 checks 1 "a helper release of another version stops the checks" 
 tgit -C "$repo" reset -q --hard "$head"
 tgit -C "$repo" push -q -f origin main
 
-echo "== bin/release.sh, its values from main's head"
+echo "== bin/release, its values from main's head"
 for extra in 9.9.9 "--check 9.9.9" "9.9.9 $helper example" --verify; do
   code=0
   # shellcheck disable=SC2086 # the words of $extra
-  out=$(cd "$repo" && env "${env_[@]}" bash bin/release.sh $extra 2>&1) || code=$?
-  expect 64 "an argument is refused: $extra" "usage: bin/release.sh [--check]"
+  out=$(cd "$repo" && env "${env_[@]}" bash bin/release $extra 2>&1) || code=$?
+  expect 64 "an argument is refused: $extra" "usage: bin/release [--check]"
 done
 # refused <name> <expected output> <shell code>: main's head with the code run on it, committed,
 # stops the checks; then main is back at $head.
@@ -368,7 +368,7 @@ refused "nothing under the version" "CHANGELOG.md: nothing under ## 9.9.9" \
 refused "nothing under the version, the last heading" "CHANGELOG.md: nothing under ## 9.9.9" \
   "printf '# Changelog\n\n## Unreleased\n\n## 9.9.9\n' > CHANGELOG.md"
 
-echo "== bin/release.sh, what changed since the previous release"
+echo "== bin/release, what changed since the previous release"
 tgit --git-dir="$t/origin.git" update-ref refs/tags/v9.9.8 "$head"
 tgit -C "$repo" update-ref refs/tags/v9.9.8 "$head"
 echo '# a change' >> "$repo/stack/start.sh"
@@ -403,7 +403,7 @@ tgit -C "$repo" update-ref -d refs/tags/v9.9.8
 tgit -C "$repo" reset -q --hard "$head"
 tgit -C "$repo" push -q -f origin main
 
-echo "== bin/release.sh"
+echo "== bin/release"
 run n 1 "no at the question" "✗ stopped: nothing built, signed or published"
 expect 1 "the question names the version" "Sign 9.9.9? [y/N]"
 check "no at the question: no draft" test -z "$(grep -E '^release (create|edit)' "$t/gh/log")"
@@ -470,9 +470,9 @@ check "$name: the tag on GitHub, made by publishing, lightweight" \
 check "$name: the tag here too" test "$(tgit -C "$repo" rev-parse refs/tags/v9.9.9)" = "$head"
 reset
 
-echo "== bin/release.sh, what it runs"
+echo "== bin/release, what it runs"
 # Its code without the quoted text (the messages); a "$(…)" stays, it runs.
-code_=$(sed -E 's/"([^"$]|\$[^("])*"//g' "$root/bin/release.sh")
+code_=$(sed -E 's/"([^"$]|\$[^("])*"//g' "$root/bin/release")
 check "nothing pushed, no tag made, no release file replaced or deleted" \
   test "$(grep -cE -e 'git push' -e 'git tag' -e 'gh release (upload|delete)' -e '--clobber' <<< "$code_")" -eq 0
 check "it starts as a draft on the checked commit" grep -qE '^gh release create .* --draft --target  ' <<< "$code_"

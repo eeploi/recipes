@@ -32,8 +32,8 @@ jobs:
           persist-credentials: false
           fetch-depth: 0 # the release tags, for bin/build-release.sh
 
-      - name: bash -n on every .sh
-        run: git ls-files '*.sh' | xargs -n1 bash -n
+      - name: bash -n on every .sh and bin/release
+        run: git ls-files '*.sh' bin/release | xargs -n1 bash -n
 
       # bin/check-layout.sh: every file in ubuntu-*/steps has a path the helper takes (each part
       # [A-Za-z0-9_][A-Za-z0-9._-]*), exists and is no link; each step sets STEP=, has its check
@@ -75,7 +75,7 @@ jobs:
           shellcheck -e SC1091 "$RUNNER_TEMP/checks.sh"
 
       - name: shellcheck, bin/, the fingerprint and the probes
-        run: shellcheck bin/*.sh stack/fingerprint.sh stack/*.probe.sh ubuntu-*/*.probe.sh
+        run: shellcheck bin/release bin/*.sh stack/fingerprint.sh stack/*.probe.sh ubuntu-*/*.probe.sh
 
       # The first boot's report to eeploi, against a fake eeploi with a short cap: taken, refused,
       # kept trying while eeploi is down or can't be reached, and never the token in the output.
@@ -145,7 +145,7 @@ jobs:
           refused 'a file not built' 'not built: extra'
           rm "$d/extra"
           verify
-          # RECIPES_DIR verifies another folder, as release.sh does with the release downloaded again.
+          # RECIPES_DIR verifies another folder, as bin/release does with the release downloaded again.
           cp -R "$d" "$k/down"
           RECIPES_DIR=$k/down verify | grep -qF "in $k/down against"
           rm "$k/down/${m##*/}.minisig"
@@ -153,13 +153,13 @@ jobs:
           if out=$(RECIPES_DIR=$k/x bin/build-release.sh 99.0.0 0.1.0 example 2>&1); then echo "$out"; echo 'RECIPES_DIR taken without --verify'; exit 1; fi
           [ "$out" = 'RECIPES_DIR is for --verify only' ]
 
-      # bin/release.sh against a fake GitHub (a gh stub, a local origin, test keys): the overview, each
+      # bin/release against a fake GitHub (a gh stub, a local origin, test keys): the overview, each
       # check (the helper release and its key, CI's jobs on the commit, the changes since the previous
       # release), one question before anything is built or signed, the result; a draft whose
       # files don't verify stays a draft, a failed publish says whether it is still a draft, published
       # or unknown, and a release is published from its checked draft, which makes the tag. Also the
       # build from a commit, the same bytes as from its tag. Needs minisign, installed above.
-      - name: release.sh, against a fake GitHub
+      - name: bin/release, against a fake GitHub
         run: bin/test-release.sh
 
       # The key in minisign.pub is the one every server checks: RECIPES_PUBKEY in the helper
@@ -186,11 +186,11 @@ jobs:
           # shellcheck disable=SC2001 # sed: bash's own replace is slow on a file this size
           if same_rule "$(sed 's/{0,30}/{0,31}/' <<< "$helper")"; then echo 'another rule in the helper passed'; exit 1; fi
 
-      # D-26: what bin/release.sh reads from main's head, read here from this tree: one HELPER_TAG
+      # D-26: what bin/release reads from main's head, read here from this tree: one HELPER_TAG
       # line, vN.N.N, one HELPER_PUBKEY line, a minisign public key, the providers, and CHANGELOG.md's
       # headings, lines under the version, with lines allowed under ## Unreleased, as a pull request
       # may have them.
-      - name: release, the values bin/release.sh reads
+      - name: release, the values bin/release reads
         run: |
           . bin/release-values.sh
           helper_tag .github/workflows/ci.yml

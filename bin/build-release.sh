@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds a release from its tag, not from the working copy: the package (the files a server runs,
 # as a tar.gz) and a manifest per provider and Ubuntu release, in dist/VERSION/. Signs nothing.
-# RECIPES_COMMIT builds it from that commit instead, before the tag exists: bin/release.sh does, and
+# RECIPES_COMMIT builds it from that commit instead, before the tag exists: bin/release does, and
 # publishing the release makes the tag (D-21). A tag of this version on another commit is refused.
-# bin/release.sh runs it, signs and publishes; run on its own, it is for CI and for a look.
+# bin/release runs it, signs and publishes; run on its own, it is for CI and for a look.
 # With --verify it builds the same release again and changes nothing: dist/VERSION/ must hold
 # exactly those files, the same bytes, and a .minisig per manifest that verifies the bytes built
 # against minisign.pub, the recipes public key (RECIPES_PUB sets another, for tests). RECIPES_DIR
@@ -125,7 +125,7 @@ for list in "$tmp"/tree/ubuntu-*/steps; do
     esac
   done < "$list" > "$body"
   # The probes, in the order of their list.
-  # A while loop, not mapfile: bin/release.sh runs this in macOS's bash 3.2 too.
+  # A while loop, not mapfile: bin/release runs this in macOS's bash 3.2 too.
   while IFS= read -r file; do probes+=("$file"); done < <(entries "$tmp/tree/$os/probes")
   for file in "$os/php-source.sh" stack/fingerprint.sh; do
     [ -f "$tmp/tree/$file" ] || { echo "$file is not in $src" >&2; exit 1; }
