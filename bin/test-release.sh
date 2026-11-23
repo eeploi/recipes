@@ -49,7 +49,7 @@ case "$1 $2" in
     sha=$(git rev-parse HEAD)
     if [ "$sub" = list ]; then json=${GH_RUNS-'[{"databaseId":42}]'}; else
       jobs='{"name":"check","status":"completed","conclusion":"success"},{"name":"server (8.5)","status":"completed","conclusion":"success"},{"name":"server (8.4)","status":"completed","conclusion":"success"}'
-      json=${GH_RUN-"{\"headSha\":\"$sha\",\"jobs\":[$jobs]}"}
+      json=${GH_RUN-"{\"headSha\":\"$sha\",\"status\":\"completed\",\"conclusion\":\"success\",\"jobs\":[$jobs]}"}
     fi
     jq -r "$jq" <<< "$json" ;;
   "release view")
@@ -80,15 +80,14 @@ case "$1 $2" in
     cp "${files[@]}" "$s/assets/"
     [ "${GH_FAIL:-}" != extra ] || echo notes > "$s/assets/notes.txt" ;;
   "release download")
+    dir=
+    for a in "$@"; do [ "${prev:-}" != -D ] || dir=$a; prev=$a; done
     if [[ " $* " == *" -R eeploi/helper "* ]]; then
       [ "$3" = "v${GH_HELPER:-1.2.3}" ] || { echo "release not found" >&2; exit 1; }
-      while [ $# -gt 0 ]; do [ "$1" != -D ] || dir=$2; shift; done
       mkdir -p "$dir"
       if [ "${GH_FAIL:-}" = helperkey ]; then cp "$GH_HELPERS"/other/* "$dir/"; else cp "$GH_HELPERS"/signed/* "$dir/"; fi
       exit 0
     fi
-    dir=
-    while [ $# -gt 0 ]; do [ "$1" != -D ] || dir=$2; shift; done
     mkdir -p "$dir"
     cp "$s"/assets/* "$dir/"
     case "${GH_FAIL:-}" in
@@ -282,13 +281,16 @@ for v in 9.10.0 9.09.9 9.9.8; do
 done
 
 echo "== bin/release.sh, CI on the commit"
-# run_json <jobs> [<commit>]: what GitHub gives for the run; job <name> [<status>] [<conclusion, JSON>].
-run_json() { printf '{"headSha":"%s","jobs":[%s]}' "${2:-$head}" "$1"; }
+# run_json <jobs> [<commit>] [<conclusion>]: what GitHub gives for the run; job <name> [<status>]
+# [<conclusion, JSON>].
+run_json() { printf '{"headSha":"%s","status":"completed","conclusion":"%s","jobs":[%s]}' "${2:-$head}" "${3:-success}" "$1"; }
 job() { printf '{"name":"%s","status":"%s","conclusion":%s}' "$1" "${2:-completed}" "${3:-\"success\"}"; }
 all="$(job check),$(job 'server (8.5)'),$(job 'server (8.4)')"
 GH_RUNS='[]' checks 1 "no CI run on the commit stops the checks" "✗ CI has no run on main at $short yet"
 GH_RUNS='[{"databaseId":"42; x"}]' checks 1 "a run id that is no number stops the checks" "✗ could not read CI's run on $short (42; x)"
 GH_RUN=$(run_json "$all" 0000000) checks 1 "a run on another commit stops the checks" "✗ CI's run 42 is not on $short (0000000)"
+GH_RUN=$(run_json "$all" "$head" failure) checks 1 "a run that failed, its named jobs passed, stops the checks" \
+  "✗ CI's run 42 on $short has not passed (completed/failure)"
 GH_RUN=$(run_json "$(job check),$(job 'server (8.5)')") checks 1 "a job missing stops the checks" \
   "✗ CI's run 42 on $short has no job named server (8.4)"
 GH_RUN=$(run_json "$(job check),$(job 'server (8.5)'),$(job 'server (php 8.4)')") checks 1 "a job renamed stops the checks" \
@@ -360,13 +362,10 @@ refused "no providers file" "no providers at" 'rm providers'
 refused "no provider" "providers: no provider" "echo '# none' > providers"
 refused "a provider the helper refuses" "providers: Example is no provider name" "echo Example >> providers"
 refused "a provider twice" "providers: example is there twice" "echo example >> providers"
-# Nothing under the version: pushed, so the checks get to it.
-printf '# Changelog\n\n## Unreleased\n\n## 9.9.9\n\n## 9.9.8\n' > "$repo/CHANGELOG.md"
-tgit -C "$repo" commit -qam "nothing under 9.9.9"
-tgit -C "$repo" push -q origin main
-checks 1 "a version with nothing under it stops the checks" "✗ CHANGELOG.md has nothing under ## 9.9.9"
-tgit -C "$repo" reset -q --hard "$head"
-tgit -C "$repo" push -q -f origin main
+refused "nothing under the version" "CHANGELOG.md: nothing under ## 9.9.9" \
+  "printf '# Changelog\n\n## Unreleased\n\n## 9.9.9\n\n## 9.9.8\n\n- Older.\n' > CHANGELOG.md"
+refused "nothing under the version, the last heading" "CHANGELOG.md: nothing under ## 9.9.9" \
+  "printf '# Changelog\n\n## Unreleased\n\n## 9.9.9\n' > CHANGELOG.md"
 
 echo "== bin/release.sh, what changed since the previous release"
 tgit --git-dir="$t/origin.git" update-ref refs/tags/v9.9.8 "$head"
@@ -383,10 +382,14 @@ checks 0 "a few commits: their subjects, the pull request first" "  ✓ Changes 
       An odd [2J subject
 "
 check "a subject with an escape is printed without it" test -z "$(grep $'\033' <<< "$out" || true)"
-for i in 1 2 3 4 5 6 7 8; do tgit -C "$repo" commit -q --allow-empty -m "more $i"; done
+echo example2 >> "$repo/providers"
+echo '# a marker comment' >> "$repo/markers"
+for i in 1 2 3 4 5 6; do tgit -C "$repo" commit -q --allow-empty -m "more $i"; done
+tgit -C "$repo" commit -qam "more 7"
+tgit -C "$repo" commit -q --allow-empty -m "more 8"
 tgit -C "$repo" push -q origin main
 now=$(tgit -C "$repo" rev-parse --short HEAD)
-checks 0 "many commits: the count, and how to see them" "  ✓ Changes since v9.9.8: 11 commits, 1 server file changed
+checks 0 "many commits: the count, and how to see them; markers and providers count" "  ✓ Changes since v9.9.8: 11 commits, 3 server files changed
       see them with: git log --oneline v9.9.8..$now
 "
 check "many commits: no subject" test -z "$(grep -F 'more 1' <<< "$out" || true)"
@@ -410,6 +413,7 @@ check "in a terminal: a green ✓" grep -qF $'\033[32m✓\033[0m main is clean' 
 check "in a terminal: a red ✗" grep -qF $'\033[31m✗\033[0m stopped' <<< "$out"
 reset
 left create "the draft's files don't upload" "could not create the draft"
+check "a run that stops before publishing removes what it built" test ! -e "$repo/dist/9.9.9"
 checks 1 "the draft left by a failed run stops the next one" "✗ eeploi/recipes has a draft release v9.9.9, left by a run that stopped"
 reset
 m=recipes-9.9.9-example-ubuntu-26.04.manifest
@@ -443,6 +447,8 @@ reset
 
 name="a new version"
 run y 0 "$name" "  ✓ built from $short, the same bytes as from a tag on it
+      $m
+      recipes-9.9.9.tar.gz
   ✓ signed and verified: $m
   ✓ draft created, files match
   ✓ published: v9.9.9, immutable

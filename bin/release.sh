@@ -51,7 +51,16 @@ printable() { tr -cd '\040-\176\n'; }
 # also one that stops without fail() (Ctrl-C). Once published, it says the version is released.
 left=
 work=$(mktemp -d)
-trap '[ "$?" -eq 0 ] || [ -z "$left" ] || printf "  stopped: %s\n" "$left" >&2; rm -rf "$work"' EXIT
+# $built while dist/VERSION is this run's and not published: a run that stops removes it, so the next
+# run finds it free.
+built=
+on_exit() {
+  local status=$?
+  [ "$status" -eq 0 ] || [ -z "$left" ] || printf '  stopped: %s\n' "$left" >&2
+  [ "$status" -eq 0 ] || [ -z "$built" ] || rm -rf -- "$out"
+  rm -rf "$work"
+}
+trap on_exit EXIT
 # A failure can carry gh's own output: printable only.
 fail() { printf '  %s %s\n' "$(paint 2 31 ✗)" "$(printf '%s' "$*${left:+: $left}" | printable)" >&2; left=; exit 1; }
 # Any other command that fails stops here too.
@@ -196,10 +205,7 @@ if [ -n "$previous" ]; then
 fi
 ok "$version is higher than every released version"
 
-# The pull request that raises the version moves the Unreleased lines under its heading.
-# changelog_version (above) read ## Unreleased, empty, then ## VERSION.
-notes=$(awk -v h="## $version" '$0 == h { f = 1; next } f && /^## / { exit } f && NF { n++ } END { print n + 0 }' "$work/changelog")
-[ "$notes" -gt 0 ] || fail "CHANGELOG.md has nothing under ## $version"
+# changelog_version (above) read ## Unreleased, empty, then ## VERSION with lines under it.
 ok "CHANGELOG: ## $version, Unreleased empty"
 
 # The helper every server of this release needs: released (a draft has no tag and isn't found), signed
@@ -214,26 +220,27 @@ grep -qxF "VERSION='$min_helper'" "$work/helper/eeploi-helper" || fail "eeploi-h
 ok "helper v$min_helper is released, and its key matches HELPER_PUBKEY ($helper_id)"
 
 # CI's own run on this exact commit stands for the tests and shellcheck: the latest run of ci.yml for
-# the push to main, and each job in CI_JOBS, there once, finished and passed.
+# the push to main, passed as a whole, and each job in CI_JOBS there once, finished and passed.
 run=$(gh run list -R "$REPO" --commit "$head" --workflow ci.yml --event push --branch main --limit 1 \
   --json databaseId --jq '.[0].databaseId // ""') || fail "could not ask GitHub for CI on $short"
 [ -n "$run" ] || fail "CI has no run on main at $short yet"
 [[ $run =~ ^[0-9]+$ ]] || fail "could not read CI's run on $short ($run)"
-gh run view "$run" -R "$REPO" --json headSha,jobs --jq '.headSha, (.jobs[] | "\(.name)\t\(.status)/\(.conclusion)")' \
+gh run view "$run" -R "$REPO" --json headSha,status,conclusion,jobs \
+  --jq '.headSha, "\(.status)/\(.conclusion)", (.jobs[] | "\(.name)\t\(.status)/\(.conclusion)")' \
   > "$work/ci" || fail "could not read CI's run $run on $short"
-[ "$(sed -n 1p "$work/ci")" = "$head" ] || fail "CI's run $run is not on $short ($(sed -n 1p "$work/ci"))"
+{ read -r ci_sha; read -r ci_state; } < "$work/ci"
+[ "$ci_sha" = "$head" ] || fail "CI's run $run is not on $short ($ci_sha)"
+[ "$ci_state" = completed/success ] || fail "CI's run $run on $short has not passed ($ci_state)"
 passed=
 for job in "${CI_JOBS[@]}"; do
-  got=$(awk -F '\t' -v j="$job" 'NR > 1 && $1 == j { print $2 }' "$work/ci" | paste -sd , -)
+  got=$(awk -F '\t' -v j="$job" 'NR > 2 && $1 == j { print $2 }' "$work/ci" | paste -sd , -)
   [ -n "$got" ] || fail "CI's run $run on $short has no job named $job"
   [ "$got" = completed/success ] || fail "CI's $job job on $short has not passed ($got)"
   passed+="${passed:+, }\`$job\`"
 done
 ok "CI $passed passed on $short"
 
-oses=()
-while IFS= read -r os; do oses+=("$os"); done < <(git ls-tree --name-only "$head" | grep '^ubuntu-' || true)
-[ "${#oses[@]}" -gt 0 ] || fail "main has no ubuntu-* folder"
+git ls-tree --name-only "$head" | grep -q '^ubuntu-' || fail "main has no ubuntu-* folder"
 # The secret key's id can't be read without its password; its public key next to it must be
 # minisign.pub, and the signatures are checked against minisign.pub.
 case "$key" in /*) ;; *) fail "RECIPES_KEY must be an absolute path: $key" ;; esac
@@ -248,13 +255,16 @@ immutable_on=$(gh api "repos/$REPO/immutable-releases" --jq .enabled) || fail "G
 [ ! -e "$out" ] || fail "$out exists from an earlier run: remove it first (rm -r $out)"
 ok "immutable releases on, $out is free"
 
-# What is released: the commits since the previous release, and how many files a server runs changed.
+# What is released: the commits since the previous release, and how many files that go into a release
+# changed: what a server runs, the markers and the providers.
 # Subjects only while they fit on a screen, never a diff.
 if [ -n "$previous" ]; then
   since=refs/tags/v$previous
   git merge-base --is-ancestor "$since" "$head" || fail "v$previous is not in the history of $short"
   count=$(git rev-list --count "$since..$head")
-  changed=$(git diff --name-only "$since" "$head" -- stack first-boot 'ubuntu-*' | grep -c . || true)
+  changed=$(git diff --name-only "$since" "$head" -- stack first-boot 'ubuntu-*' markers providers) ||
+    fail "could not compare v$previous with $short"
+  changed=$(grep -c . <<< "$changed" || true)
   commits="$count commits"
   [ "$count" != 1 ] || commits="1 commit"
   server="$changed server files"
@@ -280,9 +290,11 @@ printf '\n'
 read -r -p "$(paint 2 1 "Sign $version?") [y/N] " answer || answer=
 [ "$answer" = y ] || fail "stopped: nothing built, signed or published"
 
+built=1
 RECIPES_COMMIT=$head bin/build-release.sh "$version" "$min_helper" "${providers[@]}" > "$work/build" 2>&1 ||
   { sed 's/^/    /' "$work/build" | printable >&2; fail "the build failed: nothing signed or published"; }
 ok "built from $short, the same bytes as from a tag on it"
+for f in "$out"/*; do printf '      %s\n' "${f##*/}"; done
 
 manifests=("$out"/*.manifest)
 for m in "${manifests[@]}"; do
@@ -336,6 +348,7 @@ if ! gh release edit "$tag" -R "$REPO" --draft=false > /dev/null; then
   fail "publishing $tag gave an error, and GitHub could not say whether it is published ($state): check gh release view $tag -R $REPO." \
     "Still a draft: $undo. Published: the version is released"
 fi
+built=
 left="$tag is published, the version is released: check it with gh release view $tag -R $REPO"
 got=$(release_view isImmutable) || fail "could not read $tag back from GitHub"
 [ "$got" = "false true $want $title" ] ||

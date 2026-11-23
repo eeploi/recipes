@@ -187,8 +187,9 @@ jobs:
           if same_rule "$(sed 's/{0,30}/{0,31}/' <<< "$helper")"; then echo 'another rule in the helper passed'; exit 1; fi
 
       # D-26: what bin/release.sh reads from main's head, read here from this tree: one HELPER_TAG
-      # line, vN.N.N, one HELPER_PUBKEY line, a minisign public key, the providers, and CHANGELOG.md's headings, with lines allowed under
-      # ## Unreleased, as a pull request may have them.
+      # line, vN.N.N, one HELPER_PUBKEY line, a minisign public key, the providers, and CHANGELOG.md's
+      # headings, lines under the version, with lines allowed under ## Unreleased, as a pull request
+      # may have them.
       - name: release, the values bin/release.sh reads
         run: |
           . bin/release-values.sh
