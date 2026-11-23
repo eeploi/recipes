@@ -6,6 +6,10 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 ## Unreleased
 
+### Added
+
+- `ubuntu-26.04/00-cloud-init.sh` and its check, an `always` step after step 0's apt retries: cloud-init-local starts after `apparmor.service` again (`/etc/systemd/system/cloud-init-local.service.d/10-after-apparmor.conf`), so it no longer races the rename of the network card during its DHCP at boot, which failed cloud-init's boot stages on Ubuntu 26.04. A workaround for canonical/cloud-init#7142, to be removed once cloud-init fixes the race (D-29).
+
 ## 0.7.0
 
 ### Added

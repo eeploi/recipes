@@ -335,7 +335,7 @@ jobs:
           ARG UBUNTU_IMAGE
           FROM $UBUNTU_IMAGE
           RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
-                fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl && useradd -m deploy \
+                fail2ban nginx needrestart unattended-upgrades kmod logrotate openssl cloud-init && useradd -m deploy \
             && systemctl mask getty.target
           CMD ["/sbin/init"]
           DOCKERFILE
@@ -585,6 +585,30 @@ jobs:
             chmod 600 /etc/eeploi/recipes.conf; fails "another mode"
             bash /tmp/check'
 
+      # cloud-init after AppArmor (D-29: canonical/cloud-init#7142): the check fails with another
+      # line in the drop-in, with another mode, and with the drop-in in place but not loaded by
+      # systemd. After each, the step puts it right again. A container can't reproduce the race.
+      - name: cloud-init after AppArmor, its check
+        run: |
+          docker exec twice bash -euc '
+            dropin=/etc/systemd/system/cloud-init-local.service.d/10-after-apparmor.conf
+            bin/render.sh --step ubuntu-26.04/00-cloud-init.sh > /tmp/step
+            bin/render.sh --check ubuntu-26.04/00-cloud-init.sh > /tmp/check
+            bash /tmp/check
+            fails() {
+              if bash /tmp/check 2> /tmp/out; then echo "check passed with $1"; exit 1; fi
+              grep -qxF "$2" /tmp/out || { echo "check with $1, not: $2"; cat /tmp/out; exit 1; }
+              bash /tmp/step
+              bash /tmp/check
+            }
+            echo "After=network.target" >> "$dropin"; fails "a line more" "$dropin: not the drop-in step 0 writes"
+            chmod 664 "$dropin"; fails "mode 664" "$dropin: not root'"'"'s, 0644"
+            cp "$dropin" /tmp/dropin
+            rm "$dropin"
+            systemctl daemon-reload
+            cp /tmp/dropin "$dropin"
+            fails "the drop-in not loaded" "cloud-init-local.service: not after apparmor.service"'
+
       # Every check runs on its own, as the helper runs it, and leaves /etc, fail2ban and nginx as
       # they were, passing or not (bin/checks-read-only.sh). A failing check stops at its failing
       # line, so the lines after it are not tested here. Then a check with a line more that writes to /etc, or that restarts nginx, fails it.
@@ -683,7 +707,7 @@ jobs:
           ls -l "$RUNNER_TEMP/www/v99.0.0"
 
       # A fresh Ubuntu 26.04 with what a cloud image brings that the steps use: systemd, SSH, sudo,
-      # logrotate.
+      # logrotate, cloud-init.
       # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
       # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
       # Then the script printed to run by hand, as eeploi renders it, with the matrix's PHP, and the
@@ -694,7 +718,7 @@ jobs:
           ARG UBUNTU_IMAGE
           FROM $UBUNTU_IMAGE
           RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq systemd systemd-sysv \
-                openssh-server sudo kmod iproute2 logrotate python3 openssl ca-certificates
+                openssh-server sudo kmod iproute2 logrotate python3 openssl ca-certificates cloud-init
           CMD ["/sbin/init"]
           DOCKERFILE
           docker run -d --name server -e RENDER_PHP --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock \

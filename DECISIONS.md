@@ -247,3 +247,12 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 - **Why:** a provider's image is behind; a new one had 95 security updates waiting minutes after its first boot. A new server is the one moment an update and a reboot cost nothing: no sites, no visitors. A server that can't update doesn't go live. One reboot always, with no "is it needed?" logic, also proves every service comes back.
 - **Accepted:** the first boot takes longer, more on an older image. apt keeps Ubuntu's phasing: an update Ubuntu rolls out in stages (never a security one) comes only once it is offered to the server, so a few can still wait after the first boot, and unattended-upgrades won't take them later. A server built before this has no record of it, and its check fails under `recipe-run` (D-10).
 - **Where:** `first-boot/07-upgrade.sh`
+
+## D-29: cloud-init-local starts after AppArmor, a workaround
+
+- **Kind:** decision
+- **Decided:** 2026-11-23
+- **What:** step 0 writes a systemd drop-in, `/etc/systemd/system/cloud-init-local.service.d/10-after-apparmor.conf` (`[Unit]`, `After=apparmor.service`), and reloads systemd. It is an `always` step, so `recipe-run` brings it to servers that already run. Remove it once cloud-init fixes the race.
+- **Why:** on Ubuntu 26.04, after a reboot, cloud-init-local failed (`FileNotFoundError` on `/sys/class/net/enp1s0/operstate`, "No valid DHCP lease configuration found in dhcpcd lease"), and cloud-config and cloud-final with it, while the network came up fine. The network card is renamed (enp1s0 to eth0) while cloud-init-local runs its DHCP. open-vm-tools 2:13.0.10-1ubuntu1.1, already in the provider's image, dropped the delay that had cloud-init-local start after `apparmor.service`. Upstream: canonical/cloud-init#7142, closed without a fix. The drop-in puts that order back: tested by hand on a real server, three reboots, each without a failed cloud-init stage. A container can't reproduce the race, so CI tests only the drop-in and its check; the proof is the next real first boot.
+- **Accepted:** cloud-init-local waits for AppArmor at every boot. A server without cloud-init gets the drop-in for a unit it doesn't have.
+- **Where:** `ubuntu-26.04/00-cloud-init.sh`, `ubuntu-26.04/00-cloud-init.check.sh`
