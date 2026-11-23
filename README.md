@@ -35,7 +35,8 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 |---|---|---|
 | 0 | `first-boot/00-lock-root.sh` | Locks root's password and records that it did (`/etc/eeploi/root-locked`) |
 | 0 | `stack/00-values.sh` | Writes the values to `/etc/eeploi/recipes.conf` (Values) |
-| 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times |
+| 0 | `stack/00-apt-retries.sh` | apt tries a dropped connection five more times; an install or upgrade waits up to five minutes for dpkg's lock |
+| 0 | `first-boot/00-apt-timers.sh` | Stops apt's daily timers for the rest of the first boot and waits up to five minutes for a daily job already running, as `apt-get update` doesn't wait for apt's lock; they stay enabled, and the reboot after the first boot starts them again |
 | 0 | `first-boot/00-helper-download.sh` | Downloads eeploi-helper and checks its signature and SHA-256 |
 | 1 | `ubuntu-26.04/01-packages.sh` | nginx, PHP, Node, Redis, Supervisor, the database, Composer and a pinned npm, without Ubuntu's `globalignorefile` and its update notice |
 | 2 | `stack/02-deploy-user.sh` | The deploy user, with eeploi's key only; cron and at for root and that user only; PHP-FPM's stock `[www]` pool closed (on demand, two workers, a socket only root may open), no `X-Powered-By` header, no session upload progress |
@@ -45,7 +46,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 6 | `stack/06-fail2ban.sh` | fail2ban for SSH: bans of 1 hour that double with each new ban within a day (capped at a week), and the recidive jail (five bans in a day: every port, a week); taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
 | 6 | `stack/06-fail2ban-trusted.sh` | eeploi's own addresses, one each, never banned by any jail (`/etc/fail2ban/jail.d/eeploi-trusted.conf`); the old file stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, Ubuntu's and Ubuntu Pro's (Ubuntu's own list of origins cleared), and every update of a PHP from packages.sury.org, services restarted after one, a package update keeps the config files eeploi changed, the SCTP, RDS and TIPC kernel modules blocked, no ICMP redirects taken or sent, martians logged (`/etc/sysctl.d/60-eeploi-network.conf`), no restart by Ctrl+Alt+Del (`ctrl-alt-del.target` masked, `CtrlAltDelBurstAction=none` in `/etc/systemd/system.conf.d/60-eeploi-ctrl-alt-del.conf`) |
-| 7 | `first-boot/07-upgrade.sh` | Installs every update Ubuntu offers this server now, once, new packages they need included and none removed; a failed update fails the first boot; records it in `/etc/eeploi/updated`. No reboot: that comes after the first boot |
+| 7 | `first-boot/07-upgrade.sh` | Installs every update Ubuntu offers this server now, once, new packages they need included and none removed; a failed update fails the first boot; records it in `/etc/eeploi/updated`; stops apt's timers again, as an apt update starts them. No reboot: that comes after the first boot |
 | 8 | `stack/08-real-ip.sh` | Real visitor IPs: nginx takes `CF-Connecting-IP` from Cloudflare's ranges (`/etc/nginx/conf.d/cloudflare.conf`) |
 | 8 | `stack/08-nginx.sh` | No nginx version in headers and error pages (`server_tokens off` in `/etc/nginx/nginx.conf`), room for large FastCGI headers, no default site, a catch-all that refuses the TLS handshake for unknown hosts; taken at once by a running nginx; the old config comes back when nginx refuses the new one or doesn't reload |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |

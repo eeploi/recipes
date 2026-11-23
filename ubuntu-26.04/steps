@@ -5,6 +5,7 @@ first-boot/00-lock-root.sh
 stack/values.sh
 stack/00-values.sh
 stack/00-apt-retries.sh
+first-boot/00-apt-timers.sh
 first-boot/00-helper-download.sh
 ubuntu-26.04/01-packages.sh
 stack/02-deploy-user.sh
