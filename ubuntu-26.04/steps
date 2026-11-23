@@ -14,6 +14,7 @@ stack/05-firewall.sh
 stack/06-fail2ban.sh
 stack/06-fail2ban-trusted.sh
 stack/07-updates.sh
+first-boot/07-upgrade.sh
 stack/08-real-ip.sh
 stack/08-nginx.sh
 stack/09-logs.sh

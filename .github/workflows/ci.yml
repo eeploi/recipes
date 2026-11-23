@@ -632,6 +632,7 @@ jobs:
   # Twice: with Ubuntu's own PHP, and with a PHP from packages.sury.org, so its pinned key is tested.
   server:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30 # a step that hangs fails here, not after 6 hours
     strategy:
       fail-fast: false
       matrix:
@@ -681,7 +682,8 @@ jobs:
       # logrotate.
       # First what eeploi renders itself, which bin/render.sh leaves out: root's password locked
       # (first-boot/00-lock-root.sh), the deploy user with a key, the helper and its sudo rule.
-      # Then the script printed to run by hand, as eeploi renders it, with the matrix's PHP.
+      # Then the script printed to run by hand, as eeploi renders it, with the matrix's PHP, and the
+      # first boot's updates (first-boot/07-upgrade.sh, 15 minutes at most), after which no update waits.
       - name: server, built
         run: |
           docker build --build-arg UBUNTU_IMAGE -t server - <<'DOCKERFILE'
@@ -711,7 +713,12 @@ jobs:
             chmod 440 /etc/sudoers.d/eeploi
             visudo -cqf /etc/sudoers.d/eeploi
             bin/render.sh --no-first-boot > /root/by-hand.sh
-            bash /root/by-hand.sh'
+            bash /root/by-hand.sh
+            # A hang shows what waits: the processes, systemd jobs and the last dpkg lines.
+            DEBIAN_FRONTEND=noninteractive timeout 900 bash -euo pipefail first-boot/07-upgrade.sh || { rc=$?
+              echo "07-upgrade.sh: exit $rc"; ps -ef --forest; systemctl list-jobs --no-pager || true
+              tail -n 60 /var/log/apt/term.log /var/log/dpkg.log || true; exit "$rc"; }
+            if apt-get -s upgrade --with-new-pkgs | grep "^Inst "; then echo "an update still waits"; exit 1; fi'
 
       # The release served over HTTPS on localhost, with a certificate the server trusts.
       - name: server, the release on a local HTTPS server
@@ -781,6 +788,18 @@ jobs:
             passes "root locked, no marker"
             no_note
             mv /root/root-locked /etc/eeploi/root-locked'
+
+      # The first boot's updates, as their check sees them: without the record step 7 writes once it
+      # installed them (/etc/eeploi/updated), the check fails.
+      - name: server, recipe-run without the update record
+        run: |
+          docker exec server bash -euc '
+            run() { runuser -u deploy -- sudo -n /usr/local/sbin/eeploi-helper recipe-run 99.0.0 example 2>&1; }
+            [ "$(stat -c "%F %U:%G" /etc/eeploi/updated)" = "regular file root:root" ]
+            mv /etc/eeploi/updated /root/updated
+            if out=$(run); then echo "$out"; echo "recipe-run passed without the update record"; exit 1; fi
+            grep -qxF "check failed first-boot/07-upgrade.check.sh" <<< "$out" || { echo "$out"; exit 1; }
+            mv /root/updated /etc/eeploi/updated'
 
       # Step 4 runs again and changes nothing (and leaves the package's moduli file as it is), and its
       # check passes. Then the check fails on each setting turned back in a drop-in that sorts

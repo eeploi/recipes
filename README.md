@@ -18,7 +18,7 @@ eeploi keeps a pinned copy of these files, at a fixed commit, and renders them i
 |---|---|
 | `stack/` | The steps every Ubuntu release shares: apt retries, the deploy user, sudo, SSH, the firewall, fail2ban, updates, nginx, logs, start; and their probes |
 | `ubuntu-26.04/` | What differs per Ubuntu release: the list of steps (`steps`), the list of probes (`probes`), the packages (`01-packages.sh`) and their probes, and the source for another PHP version than Ubuntu's (`php-source.sh`) |
-| `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download and the host-key report |
+| `first-boot/` | Only for a server eeploi creates: the report of a failed step, the root password lock, the helper download, the first updates and the host-key report |
 | `bin/` | Not part of a server's script: the layout check, the render of the steps that shellcheck reads, the run of each `always` step twice (CI), the test that each check is read-only (CI), the test of the report to eeploi (CI), the test of the PHP source's retry (CI), the tests of the probes and of the helper's server report (CI), the release command and its build, and the test of the release command against a fake GitHub (CI) |
 
 ## Decisions
@@ -45,6 +45,7 @@ Each step sets `STEP` to its number and name, so a failure reports the step it f
 | 6 | `stack/06-fail2ban.sh` | fail2ban for SSH: bans of 1 hour that double with each new ban within a day (capped at a week), and the recidive jail (five bans in a day: every port, a week); taken at once by a running fail2ban; the old jail stays when fail2ban refuses the new one |
 | 6 | `stack/06-fail2ban-trusted.sh` | eeploi's own addresses, one each, never banned by any jail (`/etc/fail2ban/jail.d/eeploi-trusted.conf`); the old file stays when fail2ban refuses the new one |
 | 7 | `stack/07-updates.sh` | Security updates only, Ubuntu's and Ubuntu Pro's (Ubuntu's own list of origins cleared), and every update of a PHP from packages.sury.org, services restarted after one, a package update keeps the config files eeploi changed, the SCTP, RDS and TIPC kernel modules blocked, no ICMP redirects taken or sent, martians logged (`/etc/sysctl.d/60-eeploi-network.conf`), no restart by Ctrl+Alt+Del (`ctrl-alt-del.target` masked, `CtrlAltDelBurstAction=none` in `/etc/systemd/system.conf.d/60-eeploi-ctrl-alt-del.conf`) |
+| 7 | `first-boot/07-upgrade.sh` | Installs every update Ubuntu offers this server now, once, new packages they need included and none removed; a failed update fails the first boot; records it in `/etc/eeploi/updated`. No reboot: that comes after the first boot |
 | 8 | `stack/08-real-ip.sh` | Real visitor IPs: nginx takes `CF-Connecting-IP` from Cloudflare's ranges (`/etc/nginx/conf.d/cloudflare.conf`) |
 | 8 | `stack/08-nginx.sh` | No nginx version in headers and error pages (`server_tokens off` in `/etc/nginx/nginx.conf`), room for large FastCGI headers, no default site, a catch-all that refuses the TLS handshake for unknown hosts; taken at once by a running nginx; the old config comes back when nginx refuses the new one or doesn't reload |
 | 9 | `stack/09-logs.sh` | Log rotation for eeploi's worker and scheduler logs |
@@ -100,6 +101,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
 - **`server`**: a whole server, built as eeploi builds one, passes the helper's own `recipe-run`, with Ubuntu's own PHP and with a PHP from packages.sury.org.
   The helper is the release CI pins, with only its recipes key and its release address changed for a test key and a local server.
   `recipe-run` on a release built in CI ends `result ok` twice, the second time with every step the same, and fails when a check fails.
+  After the first boot's updates no update waits, and their check fails without the record they leave (`/etc/eeploi/updated`).
   Root's password: a password set passes with a note when step 0 locked root first (`/etc/eeploi/root-locked`) and fails without that; no password fails both; locked passes both, without a note.
   npm, as the deploy user runs it, prints no warning and no update notice.
   The settings SSH runs with, after every drop-in, are step 4's.
