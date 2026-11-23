@@ -714,7 +714,7 @@ jobs:
             bin/render.sh --no-first-boot > /root/by-hand.sh
             bash /root/by-hand.sh
             DEBIAN_FRONTEND=noninteractive bash -euo pipefail first-boot/07-upgrade.sh
-            if apt-get -s full-upgrade | grep "^Inst "; then echo "an update still waits"; exit 1; fi'
+            if apt-get -s upgrade --with-new-pkgs | grep "^Inst "; then echo "an update still waits"; exit 1; fi'
 
       # The release served over HTTPS on localhost, with a certificate the server trusts.
       - name: server, the release on a local HTTPS server
