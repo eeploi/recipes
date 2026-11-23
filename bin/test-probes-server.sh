@@ -16,6 +16,7 @@ cd "$(dirname "$0")/.."
 php=$(sed -n 's/^PHP=//p' /etc/eeploi/recipes.conf)
 www=/etc/php/$php/fpm/pool.d/www.conf
 planted=()
+# Never in a pipe: there plant runs in a subshell, and restore wouldn't know the file.
 plant() { planted+=("$1"); cat > "$1"; }
 restore() {
   rm -f ${planted[@]+"${planted[@]}"} /etc/written
@@ -40,7 +41,7 @@ trap restore EXIT
 if [ "$php" != 8.5 ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -yq postgresql > /dev/null
   for d in /etc/postgresql/*/main/conf.d; do
-    echo "primary_conninfo = 'host=db.example password=PLANTED-pg'" | plant "$d/99-planted.conf"
+    plant "$d/99-planted.conf" <<< "primary_conninfo = 'host=db.example password=PLANTED-pg'"
   done
 fi
 plant /etc/nginx/conf.d/planted.conf <<'NGINX'
@@ -63,10 +64,10 @@ NGINX
 nginx -t 2> /dev/null
 cp "$www" /root/www.conf
 printf 'env[DB_PASSWORD] = PLANTED-fpm-env\nphp_admin_value[mysqli.default_pw] = PLANTED-fpm-admin\n' >> "$www"
-echo 'mysqli.default_pw = PLANTED-php-ini' | plant "/etc/php/$php/fpm/conf.d/99-planted.ini"
-echo 'Acquire::http::Proxy "http://user:PLANTED-apt@proxy.example:3128";' | plant /etc/apt/apt.conf.d/99planted
-echo 'Banner /etc/ssh/PLANTED-ssh' | plant /etc/ssh/sshd_config.d/99-planted.conf
-printf '[mysqld]\nplanted-option = PLANTED-mysql\n' | plant /etc/mysql/mariadb.conf.d/99-planted.cnf
+plant "/etc/php/$php/fpm/conf.d/99-planted.ini" <<< 'mysqli.default_pw = PLANTED-php-ini'
+plant /etc/apt/apt.conf.d/99planted <<< 'Acquire::http::Proxy "http://user:PLANTED-apt@proxy.example:3128";'
+plant /etc/ssh/sshd_config.d/99-planted.conf <<< 'Banner /etc/ssh/PLANTED-ssh'
+plant /etc/mysql/mariadb.conf.d/99-planted.cnf <<< $'[mysqld]\nplanted-option = PLANTED-mysql'
 ufw allow 8082/tcp comment PLANTED-ufw > /dev/null
 cp /etc/redis/redis.conf /root/redis.conf
 echo 'requirepass PLANTED-redis' >> /etc/redis/redis.conf

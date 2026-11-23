@@ -946,9 +946,12 @@ jobs:
       # server-report and server-report --json, each twice, through sudo as the deploy user: exit
       # 0, the JSON parses, set up by eeploi, every kept check ran and passed, every kept probe ran,
       # ok or not-installed, no line refused, no secret shown, and /etc, fail2ban and nginx the
-      # same after (bin/test-server-report.sh). The server is as it was after, for the reports below.
+      # same after (bin/test-server-report.sh). The server is as it was after, for the reports below:
+      # no planted secret is left in /etc.
       - name: server, the probes and server-report
-        run: docker exec server bin/test-probes-server.sh
+        run: |
+          docker exec server bin/test-probes-server.sh
+          if docker exec server grep -rlI PLANTED /etc; then echo 'a planted file is left'; exit 1; fi
 
       # The text report from above, for people to read.
       - name: server, server-report in the summary
