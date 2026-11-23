@@ -2,9 +2,11 @@
 
 All notable changes to eeploi recipes, in the style of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [semver](https://semver.org); while eeploi is in development they stay on 0.x: a patch release is a fix that leaves servers the same, a minor release a new or changed step. A release's date is the date of its GitHub release.
 
-`bin/release.sh` releases the top version below, and only while `## Unreleased` is empty.
+`bin/release` releases the top version below, and only while `## Unreleased` is empty.
 
 ## Unreleased
+
+## 0.8.0
 
 ### Added
 
