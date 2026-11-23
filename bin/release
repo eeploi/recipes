@@ -11,7 +11,7 @@
 # be next to it (.pub) and the same as minisign.pub.
 # It takes no values: the version, the helper and the providers come from main's head
 # (bin/release-values.sh, D-26).
-# usage: bin/release.sh [--check]
+# usage: bin/release [--check]
 set -euo pipefail
 export LC_ALL=C
 cd "$(dirname "$0")/.."
@@ -24,7 +24,7 @@ CI_JOBS=(check 'server (8.5)' 'server (8.4)')
 key=${RECIPES_KEY:-$HOME/.minisign/eeploi-recipes.key}
 check_only=
 [ "${1:-}" != --check ] || { check_only=1; shift; }
-[ "$#" -eq 0 ] || { echo "usage: bin/release.sh [--check]" >&2; exit 64; }
+[ "$#" -eq 0 ] || { echo "usage: bin/release [--check]" >&2; exit 64; }
 # shellcheck source=bin/release-values.sh
 . bin/release-values.sh
 

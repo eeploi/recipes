@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Sourced by bin/release.sh and by CI.
+# Sourced by bin/release and by CI.
 # D-26: the values a release takes from the commit it releases, read with strict patterns. Each function reads one file and prints its value on stdout,
 # or prints why it can't and returns 1. README, Releases, has the rules.
 

@@ -125,7 +125,7 @@ while IFS=: read -r file line text; do
   for id in $(grep -oE 'D-[0-9]+:' <<< "${text#*#}" | tr -d :); do
     case "$known" in *" $id "*) ;; *) bad "${file#./}:$line" "$id is not in DECISIONS.md" ;; esac
   done
-done < <(grep -rnE --include='*.sh' --include='*.yml' --include=markers --include=steps --include=probes \
+done < <(grep -rnE --include='*.sh' --include=release --include='*.yml' --include=markers --include=steps --include=probes \
   --exclude-dir=.git --exclude-dir=dist '#.*D-[0-9]+:' . || true)
 
 [ "$fail" -eq 0 ] && echo "layout ok"

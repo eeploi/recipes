@@ -31,9 +31,9 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** decision
 - **Decided:** 2026-11-21, #29
-- **What:** `bin/release.sh` signs with `minisign -S -H` in an interactive terminal, where the maintainer types the key's password. CI and scripts never sign. The recipes key is its own, apart from the helper's.
+- **What:** `bin/release` signs with `minisign -S -H` in an interactive terminal, where the maintainer types the key's password. CI and scripts never sign. The recipes key is its own, apart from the helper's.
 - **Why:** the secret key and its password never sit on a machine or service that runs unattended. Each release needs a person.
-- **Where:** `bin/release.sh`
+- **Where:** `bin/release`
 
 ## D-3: SSH keeps local forwarding
 
@@ -184,10 +184,10 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** decision
 - **Decided:** 2026-11-17
-- **What:** a `v*` tag can't be moved or deleted (the ruleset "protect release tags" blocks update and deletion of `refs/tags/v*`), and releases are immutable. A fix is a new version, never a changed one. `bin/release.sh` stops when immutable releases are off.
+- **What:** a `v*` tag can't be moved or deleted (the ruleset "protect release tags" blocks update and deletion of `refs/tags/v*`), and releases are immutable. A fix is a new version, never a changed one. `bin/release` stops when immutable releases are off.
 - **Why:** a server checks a release against its signed manifest, by version. A version that can change would make that check, and every record of which release a server ran, worth nothing.
-- **Accepted:** a tag on the wrong commit, or a release published by mistake, stays. The next version replaces it. A version is released once: `bin/release.sh` stops at its checks when the `v<version>` tag, a release or a draft of that version exists. It makes the release as a draft on the checked commit, with no tag, downloads its files again and checks them and their signatures, and only then publishes it, which makes the tag (#68). A run that stops before publishing leaves only a draft, which can be deleted, and the version stays free. A run that stops after publishing has released the version. Releases only go up: a version must be higher than every `v*` tag, compared as numbers, so there is no fix for an older line. Servers refuse an older release anyway.
-- **Where:** `bin/release.sh`
+- **Accepted:** a tag on the wrong commit, or a release published by mistake, stays. The next version replaces it. A version is released once: `bin/release` stops at its checks when the `v<version>` tag, a release or a draft of that version exists. It makes the release as a draft on the checked commit, with no tag, downloads its files again and checks them and their signatures, and only then publishes it, which makes the tag (#68). A run that stops before publishing leaves only a draft, which can be deleted, and the version stays free. A run that stops after publishing has released the version. Releases only go up: a version must be higher than every `v*` tag, compared as numbers, so there is no fix for an older line. Servers refuse an older release anyway.
+- **Where:** `bin/release`
 
 ## D-22: eeploi's own addresses are a step of their own
 
@@ -225,10 +225,10 @@ Choices made on purpose, and the risks and limits accepted with them, so an audi
 
 - **Kind:** decision
 - **Decided:** 2026-11-22
-- **What:** `bin/release.sh` takes no version, helper or providers. The version is the top `## VERSION` heading in `CHANGELOG.md`, under an empty `## Unreleased`; the helper it needs (`min-helper`) is `HELPER_TAG` in CI's workflow; the providers are the lines of `providers`. All three are read from the commit it releases, with strict patterns, and a value it can't read stops it. Any argument but `--check` is refused.
+- **What:** `bin/release` takes no version, helper or providers. The version is the top `## VERSION` heading in `CHANGELOG.md`, under an empty `## Unreleased`; the helper it needs (`min-helper`) is `HELPER_TAG` in CI's workflow; the providers are the lines of `providers`. All three are read from the commit it releases, with strict patterns, and a value it can't read stops it. Any argument but `--check` is refused.
 - **Why:** three values typed by hand are easy to get wrong, and a wrong one can't be undone (D-21). A release claims only the helper CI tested it with, and its changes are written down before it goes out.
 - **Accepted:** a new version or provider needs a commit, reviewed in a pull request, before it can be released. The helper CI tests with is the helper every server needs: raising `HELPER_TAG` raises `min-helper` in the next release, also when no recipe needs the newer helper.
-- **Where:** `bin/release.sh`, `bin/release-values.sh`
+- **Where:** `bin/release`, `bin/release-values.sh`
 
 ## D-27: An nginx update keeps eeploi's nginx.conf
 
