@@ -3,6 +3,7 @@
 first-boot first-boot/00-lock-root.sh
 first-boot stack/00-values.sh
 always     stack/00-apt-retries.sh
+first-boot first-boot/00-apt-timers.sh
 first-boot first-boot/00-helper-download.sh
 window     ubuntu-26.04/01-packages.sh
 first-boot stack/02-deploy-user.sh

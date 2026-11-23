@@ -8,6 +8,7 @@ All notable changes to eeploi recipes, in the style of [Keep a Changelog](https:
 
 ### Added
 
+- `first-boot/00-apt-timers.sh` and its check: the first boot stops apt's daily timers before step 1 and waits up to ten minutes for a daily job already running, since `apt-get update` fails at once while apt's lists lock is held; the timers stay enabled and start again with the reboot after the first boot (#77).
 - `first-boot/07-upgrade.sh` and its check: the first boot installs every update Ubuntu offers this server now, after step 7 and before step 10, so a new server has no known update missing; a failed update fails the first boot (D-28, #71).
 
 ### Changed

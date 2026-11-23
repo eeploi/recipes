@@ -44,6 +44,16 @@ jobs:
       - name: Layout
         run: bin/check-layout.sh
 
+      # TEMPORARY (#77), removed before the PR is ready: apt-get update while apt's lists lock is held.
+      - name: TEMP apt-get update and the lists lock
+        run: |
+          sudo python3 -c 'import fcntl, time; f = open("/var/lib/apt/lists/lock", "w"); fcntl.lockf(f, fcntl.LOCK_EX); time.sleep(40)' &
+          sleep 3
+          start=$SECONDS
+          if sudo apt-get -o DPkg::Lock::Timeout=600 update -q; then r=ran; else r=failed; fi
+          echo "apt-get update $r after $((SECONDS - start)) s, lock held 40 s"
+          wait
+
       # D-1: only prehashed signatures count, as on every server: each minisign -V in ci.yml and bin/
       # has -H, but for a line marked "legacy on purpose". Then a line without -H must fail it.
       - name: minisign -V, prehashed only
