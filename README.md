@@ -109,7 +109,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   The deploy user logs in with OpenSSH's client and a key, as eeploi does, and gets the ed25519 host key.
   ssh-audit reports on SSH's crypto, a report only.
   Each probe, run twice as the helper runs it, leaves `/etc` the same, prints only `<key> <value>` lines and the lines expected, and never a secret planted in the config files, a banned IP or eeploi's own addresses.
-  The helper's `server-report`, text and `--json`, run twice each through sudo as the deploy user with those secrets still planted, exits 0, says eeploi set the server up, runs every check `recipe-run` kept and each passes, runs every kept probe (`ok` or `not-installed`, no line refused), shows none of the secrets, and leaves `/etc` the same. The text report goes to the job summary.
+  The helper's `server-report`, text and `--json`, run twice each through sudo as the deploy user with those secrets still planted, exits 0, says eeploi set the server up, runs every check `recipe-run` kept and each passes, runs every kept probe (`ok` or `not-installed`, no line refused), shows none of the secrets, and leaves `/etc` the same. After it, no planted secret is left in `/etc`. The text report goes to the job summary.
   The PHP source's pinned key is the one apt checks it with.
   Last, Lynis audits the server with Ubuntu's PHP: its hardening index, warnings and suggestions go to the job summary and the report is kept, a report only, never a failure.
 
