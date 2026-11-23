@@ -37,6 +37,16 @@ helper_tag() {
   echo "${BASH_REMATCH[1]}"
 }
 
+# helper_pubkey <file>: the one HELPER_PUBKEY line in CI's workflow, the helper's release key CI
+# checks HELPER_TAG with: a minisign public key, RW and 54 more base64 characters.
+helper_pubkey() {
+  local lines
+  lines=$(grep -E '^ *HELPER_PUBKEY:' "$1" || true)
+  [ "$(grep -c . <<< "$lines")" = 1 ] || { echo "not one HELPER_PUBKEY line"; return 1; }
+  [[ $lines =~ ^\ +HELPER_PUBKEY:\ (RW[A-Za-z0-9+/]{54})$ ]] || { echo "HELPER_PUBKEY is not a minisign public key: $lines"; return 1; }
+  echo "${BASH_REMATCH[1]}"
+}
+
 # providers_list <file>: its provider names, one per line. "#" lines and empty ones are skipped;
 # at least one, none twice.
 providers_list() {

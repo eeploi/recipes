@@ -94,7 +94,7 @@ Each test case is a comment in `.github/workflows/ci.yml`, next to the step that
   A release builds from a tag, matches its manifest, and refuses what the helper would refuse.
   `--verify` takes only a release that is unchanged and signed, prehashed, with the right key.
   The key in `minisign.pub` is `RECIPES_PUBKEY` in the helper release CI pins (`HELPER_TAG`), and the provider name rule in `bin/` is the one `recipe-run` checks there.
-  The values `bin/release.sh` reads from the commit (`bin/release-values.sh`) read from this tree: one `HELPER_TAG` line and the providers.
+  The values `bin/release.sh` reads from the commit (`bin/release-values.sh`) read from this tree: one `HELPER_TAG` line, one `HELPER_PUBKEY` line and the providers.
   In a fresh Ubuntu 26.04 container, each `always` step runs twice as the helper runs it, leaves `/etc` the same on the second run, fails no unit, and passes its check.
   Each check is read-only, and where `ci.yml` tests it, fails without what its step writes.
   The fingerprint prints only known facts.
@@ -143,20 +143,24 @@ Its check: `/etc/eeploi` is root's and 0755; the user (not root) and the port (2
 
 Any of these it can't read stops it before anything else, and so does any argument but `--check`. To release, write the version's changes under `## Unreleased`, then rename that heading to `## VERSION` and put an empty `## Unreleased` above it, in a pull request. The date is the GitHub release's, never in the file.
 
-It first shows the repo and whether `main` is the same as GitHub's, the commit, the tag if it already exists, the eeploi-helper release it needs and whether it exists, the targets, the key file and its key id, and the release and its title, `eeploi-recipes VERSION`. Then it runs eight steps, `Step N of 8`, and stops on the first failure:
+It first shows an overview: the previous version (the highest `v*` tag on GitHub), the new one, the commit and branch, the key id of `minisign.pub`, the eeploi-helper release it needs (`HELPER_TAG`) and the providers. Then it runs the checks, one line each, and stops at the first that fails, with `✗` and one line why: nothing is built, signed or uploaded.
 
-1. **Checks:** on `main`, nothing uncommitted, `main` the same as GitHub's, every local `v*` tag the same as GitHub's (the build reads them for the manifest's versions), no tag `vVERSION` here or on GitHub, `VERSION` higher than every `v*` tag (compared as numbers: releases only go up), no release or draft yet for this version, CI green on `main`'s head, the helper release there, the key's public key (`.pub` next to the secret key) the same as `minisign.pub`, immutable releases on, and `dist/VERSION/` free. A draft left by a run that stopped stops here, with how to check and delete it.
-2. **Build:** `bin/build-release.sh` (below), from the checked commit.
-3. **Sign:** each manifest with the recipes key (`~/.minisign/eeploi-recipes.key`, or `RECIPES_KEY`), prehashed (`-H`), never `-l`.
-4. **Verify:** `bin/build-release.sh --verify` against `minisign.pub`.
-5. **Draft:** asks first, then creates the GitHub release as a draft on the checked commit, with the package, the manifests and their `.minisig` files. A draft has no tag yet and can be deleted.
-6. **Verify the draft:** the draft is a draft on the checked commit with the right title and only those files. It downloads them again, compares them byte for byte with the files built and signed, and runs the step 4 checks on them (`RECIPES_DIR`).
-7. **Publish:** checks that the tag is still not on GitHub, then publishes the draft. That makes the tag on the checked commit (lightweight, made by GitHub) and the release immutable: this can't be undone. A publish error says whether the release is still a draft, published, or unknown.
-8. **Check after:** the release is published, immutable, with the right title and only those files. It downloads them again and checks them as in step 6, then fetches the tag and checks that it is on the checked commit.
+- **main:** on `main`, nothing uncommitted, the same as GitHub's `main`, and every local `v*` tag the same as GitHub's (the build reads them for the manifest's versions).
+- **Version:** no tag `vVERSION`, no release and no draft of it yet, and `VERSION` higher than every `v*` tag, compared as numbers: releases only go up. A draft left by a run that stopped stops here, with how to check and delete it.
+- **CHANGELOG:** `## VERSION` right after an empty `## Unreleased`, with lines under it.
+- **Helper:** release `vMIN_HELPER` of eeploi-helper is published, its `eeploi-helper` verifies against `HELPER_PUBKEY` in CI's workflow (prehashed only) and says that version.
+- **CI:** CI's own run stands for the tests and shellcheck, nothing runs here. The latest `ci.yml` run of the push to `main` is on exactly this commit, and its jobs `check`, `server (8.5)` and `server (8.4)` (`CI_JOBS` in `bin/release.sh`) are each there once and passed. A job missing or renamed stops it: nothing found never counts as passed.
+- **Key, GitHub, folder:** the key's public key (`.pub` next to the secret key, `~/.minisign/eeploi-recipes.key` or `RECIPES_KEY`) is `minisign.pub`, immutable releases are on, and `dist/VERSION/` is free.
+- **Changes:** the commits since the previous release and how many files a server runs changed (`stack/`, `first-boot/`, `ubuntu-*/`). Up to ten, their subjects, the pull request first (`#80 …`); more, the count and the `git log` command to see them. Never a diff. Text from a commit or from GitHub is printed as printable ASCII only.
 
-A run that stops before step 7 leaves at most a draft, with no tag, and says so: check it, delete it (`gh release delete vVERSION -R eeploi/recipes`) and run again. Until it is gone, the checks stop on it. A run that stops after publishing has released the version.
+`bin/release.sh --check` stops there: nothing built, signed or published. Without it, it asks `Sign VERSION? [y/N]`, its only question, and on `y`:
 
-`bin/release.sh --check` runs step 1 only: no key, no build, nothing published.
+1. **Build:** `bin/build-release.sh` (below), from the checked commit: the same bytes as from a tag on it.
+2. **Sign and verify:** each manifest with the recipes key, prehashed (`-H`), never `-l`; then `bin/build-release.sh --verify` against `minisign.pub`.
+3. **Draft:** checks again that the folder, GitHub's `main` and its tags didn't move and no tag or release of the version appeared, then creates the GitHub release as a draft on the checked commit, with the package, the manifests and their `.minisig` files. A draft has no tag yet and can be deleted. It reads the draft back (a draft on the checked commit, the right title, only those files), downloads them, compares them byte for byte with the files built and signed, and verifies them again (`RECIPES_DIR`).
+4. **Publish:** checks that the tag is still not on GitHub, then publishes the draft. That makes the tag on the checked commit (lightweight, made by GitHub) and the release immutable: this can't be undone. A publish error says whether the release is still a draft, published, or unknown. Then it checks the release again: published, immutable, the right title and only those files, downloaded and checked as the draft, and the tag on the checked commit.
+
+Last, `RELEASED eeploi-recipes VERSION` and the SHA-256 of each file. A run that stops before publishing leaves at most a draft, with no tag, and says so: check it, delete it (`gh release delete vVERSION -R eeploi/recipes`) and run again. Until it is gone, the checks stop on it. A run that stops after publishing has released the version, and says so. Colour only on a terminal (`NO_COLOR` turns it off); it reads the same without.
 
 `bin/build-release.sh VERSION MIN_HELPER PROVIDER...` (it keeps its values: `bin/release.sh` passes them) builds a release from its tag `vVERSION`, not from the working copy, in `dist/VERSION/`. `RECIPES_COMMIT` builds it from that commit instead, before the tag exists, as `bin/release.sh` does; a tag `vVERSION` on another commit is refused, and the files are the same, byte for byte, as from a tag on that commit. It makes one package with every file a server runs (`recipes-VERSION.tar.gz`) and a manifest per provider and Ubuntu release (`recipes-VERSION-PROVIDER-ubuntu-26.04.manifest`). It refuses a file that is not a plain file, such as a link, a path the helper refuses (each part must match `[A-Za-z0-9_][A-Za-z0-9._-]*`, so none starts with `-` or `.`), and a NUL in a list of steps or in `markers`, which bash would drop unseen. It signs nothing. The signature covers the whole manifest, and the manifest has the SHA-256 of every file.
 
