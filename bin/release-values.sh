@@ -6,36 +6,46 @@
 provider_name='^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$' # the helper's rule, as bin/build-release.sh
 
 # changelog_version <file>: the version of its top version heading. The first heading is
-# "## Unreleased", with nothing under it but empty lines; the next is "## VERSION", that version.
-# Each part a number without a leading zero. With "open", lines under "## Unreleased" are allowed:
-# the layout CI checks on a pull request.
+# "## Unreleased", with nothing under it but empty lines; the next is "## VERSION", that version,
+# with lines under it. Each part a number without a leading zero. With "open", lines under
+# "## Unreleased" are allowed: the layout CI checks on a pull request.
 changelog_version() {
   awk -v open="${2:-}" '
     function stop(why) { print why; code = 1; exit }
     /^## / {
       n++
       if (n == 1) { if ($0 != "## Unreleased") stop("the first heading is not ## Unreleased"); next }
+      if (n == 3) exit
       v = substr($0, 4)
       if (v !~ /^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$/) stop("the heading after ## Unreleased is not ## VERSION, such as ## 0.6.0")
-      print v; found = 1; exit
+      next
     }
     n == 1 && NF && open != "open" { stop("## Unreleased is not empty: move its lines under a version") }
+    n == 2 && NF { notes++ }
     END {
       if (code) exit code
       if (!n) { print "no ## Unreleased heading"; exit 1 }
-      if (!found) { print "no ## VERSION heading after ## Unreleased"; exit 1 }
+      if (n < 2) { print "no ## VERSION heading after ## Unreleased"; exit 1 }
+      if (!notes) { print "nothing under ## " v; exit 1 }
+      print v
     }
   ' "$1"
 }
 
-# helper_tag <file>: the version of the one HELPER_TAG line in CI's workflow, without its v.
-helper_tag() {
+# ci_value <file> <NAME> <regex> <what>: the value of the one "  NAME: value" line in CI's workflow,
+# matching the regex (its first group is the value), or why not.
+ci_value() {
   local lines
-  lines=$(grep -E '^ *HELPER_TAG:' "$1" || true)
-  [ "$(grep -c . <<< "$lines")" = 1 ] || { echo "not one HELPER_TAG line"; return 1; }
-  [[ $lines =~ ^\ +HELPER_TAG:\ v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$ ]] || { echo "HELPER_TAG is not vN.N.N: $lines"; return 1; }
+  lines=$(grep -E "^ *$2:" "$1" || true)
+  [ "$(grep -c . <<< "$lines")" = 1 ] || { echo "not one $2 line"; return 1; }
+  [[ $lines =~ ^\ +$2:\ $3$ ]] || { echo "$2 is not $4: $lines"; return 1; }
   echo "${BASH_REMATCH[1]}"
 }
+# helper_tag <file>: the version of HELPER_TAG, without its v.
+helper_tag() { ci_value "$1" HELPER_TAG 'v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))' vN.N.N; }
+# helper_pubkey <file>: HELPER_PUBKEY, the helper's release key CI checks HELPER_TAG with: RW and 54
+# more base64 characters.
+helper_pubkey() { ci_value "$1" HELPER_PUBKEY '(RW[A-Za-z0-9+/]{54})' 'a minisign public key'; }
 
 # providers_list <file>: its provider names, one per line. "#" lines and empty ones are skipped;
 # at least one, none twice.

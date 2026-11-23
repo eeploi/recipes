@@ -153,7 +153,9 @@ jobs:
           if out=$(RECIPES_DIR=$k/x bin/build-release.sh 99.0.0 0.1.0 example 2>&1); then echo "$out"; echo 'RECIPES_DIR taken without --verify'; exit 1; fi
           [ "$out" = 'RECIPES_DIR is for --verify only' ]
 
-      # bin/release.sh against a fake GitHub (a gh stub, a local origin, a test key): a draft whose
+      # bin/release.sh against a fake GitHub (a gh stub, a local origin, test keys): the overview, each
+      # check (the helper release and its key, CI's jobs on the commit, the changes since the previous
+      # release), one question before anything is built or signed, the result; a draft whose
       # files don't verify stays a draft, a failed publish says whether it is still a draft, published
       # or unknown, and a release is published from its checked draft, which makes the tag. Also the
       # build from a commit, the same bytes as from its tag. Needs minisign, installed above.
@@ -185,12 +187,14 @@ jobs:
           if same_rule "$(sed 's/{0,30}/{0,31}/' <<< "$helper")"; then echo 'another rule in the helper passed'; exit 1; fi
 
       # D-26: what bin/release.sh reads from main's head, read here from this tree: one HELPER_TAG
-      # line, vN.N.N, the providers, and CHANGELOG.md's headings, with lines allowed under
-      # ## Unreleased, as a pull request may have them.
+      # line, vN.N.N, one HELPER_PUBKEY line, a minisign public key, the providers, and CHANGELOG.md's
+      # headings, lines under the version, with lines allowed under ## Unreleased, as a pull request
+      # may have them.
       - name: release, the values bin/release.sh reads
         run: |
           . bin/release-values.sh
           helper_tag .github/workflows/ci.yml
+          helper_pubkey .github/workflows/ci.yml
           providers_list providers
           changelog_version CHANGELOG.md open
 
