@@ -612,7 +612,7 @@ jobs:
             chmod 600 /etc/eeploi/recipes.conf; fails "another mode"
             bash /tmp/check'
 
-      # cloud-init after AppArmor (D-29: canonical/cloud-init#7142): the check fails with another
+      # cloud-init after AppArmor (D-29: canonical/cloud-init#7210): the check fails with another
       # line in the drop-in, another owner, another mode, and a link to the same lines; after each,
       # the step puts it right again. Without the drop-in loaded, Ubuntu's own unit is not after
       # apparmor.service, and the check's last test fails (run alone, as its first ones fail
